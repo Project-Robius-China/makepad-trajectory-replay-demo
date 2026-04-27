@@ -139,6 +139,12 @@ script_mod! {
         }
     }
 
+    let TrackCanvasBase = #(TrackCanvas::register_widget(vm))
+    let TrackCanvas = set_type_default() do TrackCanvasBase{
+        width: Fill
+        height: Fill
+    }
+
     startup() do #(App::script_component(vm)){
         ui: Root{
             main_window := Window{
@@ -189,10 +195,9 @@ script_mod! {
                         width: Fill height: Fill
                         flow: Overlay
 
-                        canvas_view := View{
-                            width: Fill height: Fill
-                            show_bg: true
-                            draw_bg.color: #x0A0A0F
+                        track_canvas := TrackCanvas{
+                            width: Fill
+                            height: Fill
                         }
 
                         guard_edge := View{
@@ -750,12 +755,103 @@ pub struct DrawGuardEdge {
     #[live] guard_pulse_phase: f32,
 }
 
+#[derive(Script, ScriptHook, Widget)]
+pub struct TrackCanvas {
+    #[uid] uid: WidgetUid,
+    #[walk] walk: Walk,
+    #[layout] layout: Layout,
+
+    #[redraw] #[live] draw_track: DrawTrack,
+    #[live] draw_start_marker: DrawMarker,
+    #[live] draw_end_marker: DrawMarker,
+    #[live] draw_halo: DrawHalo,
+
+    #[rust] track: Option<Arc<Track>>,
+    #[rust] geom: Option<TrackGeom>,
+    #[rust] last_rect_size: Vec2,
+    #[rust] walked_ratio: f32,
+    #[rust] track_progress: f32,
+    #[rust] hr_phase_val: f32,
+    #[rust] guard_pulse: f32,
+    #[rust] overlay_dim_val: f32,
+
+    #[rust] area: Area,
+}
+
 #[derive(Default)]
-struct CanvasGeom {
-    rect: Rect,
-    sample_pts: Vec<(f32, f32, f32, f32)>,
-    start_screen: (f32, f32),
-    end_screen: (f32, f32),
+struct TrackGeom {
+    rect_size: Vec2,
+    segs: Vec<TrackSegment>,
+    start_screen: Vec2,
+    end_screen: Vec2,
+}
+
+#[derive(Default, Clone)]
+struct TrackSegment {
+    start: Vec2,
+    end: Vec2,
+    t_a: f32,
+    t_b: f32,
+    speed_a: f32,
+    speed_b: f32,
+}
+
+impl Widget for TrackCanvas {
+    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {
+    }
+
+    fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
+        cx.begin_turtle(walk, self.layout);
+        cx.end_turtle_with_area(&mut self.area);
+        DrawStep::done()
+    }
+}
+
+impl TrackCanvas {
+    pub fn set_track(&mut self, cx: &mut Cx, track: Option<Arc<Track>>) {
+        let changed = match (&self.track, &track) {
+            (None, None) => false,
+            (Some(a), Some(b)) => !Arc::ptr_eq(a, b),
+            _ => true,
+        };
+        if changed {
+            self.track = track;
+            self.geom = None;
+            self.area.redraw(cx);
+        }
+    }
+
+    pub fn set_progress(&mut self, cx: &mut Cx, walked_ratio: f32, track_progress: f32) {
+        self.walked_ratio = walked_ratio;
+        self.track_progress = track_progress;
+        self.draw_track.walked_segment_ratio = walked_ratio;
+        self.draw_track.track_progress = track_progress;
+        self.area.redraw(cx);
+    }
+
+    pub fn set_hr_phase(&mut self, cx: &mut Cx, hr_phase: f32) {
+        self.hr_phase_val = hr_phase;
+        self.draw_halo.hr_phase = hr_phase;
+        self.area.redraw(cx);
+    }
+
+    pub fn set_guard_pulse(&mut self, cx: &mut Cx, pulse: f32) {
+        self.guard_pulse = pulse;
+        self.draw_track.guard_pulse_phase = pulse;
+        self.draw_halo.guard_pulse_phase = pulse;
+        self.area.redraw(cx);
+    }
+
+    pub fn set_overlay_dim(&mut self, cx: &mut Cx, dim: f32) {
+        self.overlay_dim_val = dim;
+        self.draw_track.overlay_dim = dim;
+        self.area.redraw(cx);
+    }
+
+    pub fn set_scrubber_echo(&mut self, cx: &mut Cx, phase: f32) {
+        self.draw_track.scrubber_echo_phase = phase;
+        self.area.redraw(cx);
+    }
 }
 
 #[derive(Default)]
@@ -788,12 +884,7 @@ pub struct App {
     #[rust] guard_card_visible: bool,
     #[rust] last_scrubber_drag_secs: f64,
 
-    #[live] draw_track: DrawTrack,
-    #[live] draw_start_marker: DrawMarker,
-    #[live] draw_end_marker: DrawMarker,
-    #[live] draw_halo: DrawHalo,
     #[live] draw_guard_edge: DrawGuardEdge,
-    #[rust] geom: CanvasGeom,
 
     #[rust] next_frame: NextFrame,
 }
@@ -947,6 +1038,9 @@ impl App {
     fn maybe_advance_phase(&mut self, cx: &mut Cx, now: f64) {
         let dt = (now - self.last_now_secs).max(0.0);
         self.last_now_secs = now;
+        let mut track_progress_v: f32 = 0.0;
+        let mut walked_ratio_v: f32 = 0.0;
+        let mut overlay_dim_v: f32 = 0.0;
         match self.phase {
             PHASE_SYNCING => {
                 if matches!(
@@ -963,8 +1057,8 @@ impl App {
             PHASE_PATH_DRAW => {
                 let elapsed = now - self.phase_entered_secs;
                 let p = (elapsed / PATH_DRAW_DURATION_SECS).clamp(0.0, 1.0) as f32;
-                self.draw_track.track_progress = p;
-                self.draw_track.walked_segment_ratio = 0.0;
+                track_progress_v = p;
+                walked_ratio_v = 0.0;
                 if p >= 1.0 {
                     self.enter_phase(cx, PHASE_PLAYBACK, now);
                 }
@@ -978,8 +1072,8 @@ impl App {
                             as f32;
                         self.state.apply_progress(&track, new_p);
                     }
-                    self.draw_track.track_progress = 1.0;
-                    self.draw_track.walked_segment_ratio = self.state.playback_progress;
+                    track_progress_v = 1.0;
+                    walked_ratio_v = self.state.playback_progress;
 
                     self.update_guard(cx, &track, now);
                     self.refresh_hud(cx, &track);
@@ -991,33 +1085,42 @@ impl App {
                 }
             }
             PHASE_STATS => {
-                self.draw_track.overlay_dim = ((now - self.phase_entered_secs) / 0.5)
-                    .clamp(0.0, 1.0) as f32;
+                overlay_dim_v = ((now - self.phase_entered_secs) / 0.5).clamp(0.0, 1.0) as f32;
             }
             _ => {}
         }
 
         let echo_age = (now - self.last_scrubber_drag_secs).max(0.0);
-        self.draw_track.scrubber_echo_phase = if echo_age < SCRUBBER_ECHO_FADE_SECS {
+        let scrubber_echo_v = if echo_age < SCRUBBER_ECHO_FADE_SECS {
             (1.0 - (echo_age / SCRUBBER_ECHO_FADE_SECS)).max(0.0) as f32
         } else {
             0.0
         };
-        self.state.scrubber_echo_phase = self.draw_track.scrubber_echo_phase;
+        self.state.scrubber_echo_phase = scrubber_echo_v;
 
         let guard_age = (now - self.guard_active_started_at_secs).max(0.0);
-        if self.state.contract_guard_active && guard_age >= GUARD_PULSE_DURATION_SECS {
-            self.draw_track.guard_pulse_phase = 0.0;
-        } else if self.state.contract_guard_active {
-            self.draw_track.guard_pulse_phase =
-                (1.0 - (guard_age / GUARD_PULSE_DURATION_SECS)).max(0.0) as f32;
+        let guard_pulse_v = if self.state.contract_guard_active
+            && guard_age < GUARD_PULSE_DURATION_SECS
+        {
+            (1.0 - (guard_age / GUARD_PULSE_DURATION_SECS)).max(0.0) as f32
         } else {
-            self.draw_track.guard_pulse_phase = 0.0;
-        }
+            0.0
+        };
 
         let (hr_phase_now, _) = self.hr_phase(now);
-        self.draw_halo.hr_phase = hr_phase_now;
-        self.draw_halo.guard_pulse_phase = self.draw_track.guard_pulse_phase;
+
+        self.draw_guard_edge.guard_pulse_phase = guard_pulse_v;
+
+        let track_arc = self.track.clone();
+        let canvas_ref = self.ui.widget(cx, ids!(track_canvas));
+        if let Some(mut canvas) = canvas_ref.borrow_mut::<TrackCanvas>() {
+            canvas.set_track(cx, track_arc);
+            canvas.set_progress(cx, walked_ratio_v, track_progress_v);
+            canvas.set_hr_phase(cx, hr_phase_now);
+            canvas.set_guard_pulse(cx, guard_pulse_v);
+            canvas.set_overlay_dim(cx, overlay_dim_v);
+            canvas.set_scrubber_echo(cx, scrubber_echo_v);
+        }
 
         self.refresh_top_bar(cx);
         self.refresh_sync_overlay(cx);
