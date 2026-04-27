@@ -802,12 +802,177 @@ impl Widget for TrackCanvas {
 
     fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
         cx.begin_turtle(walk, self.layout);
+        let rect = cx.turtle().rect();
+        self.ensure_geom(rect);
+
+        if let Some(geom) = self.geom.as_ref() {
+            if !geom.segs.is_empty() {
+                self.draw_track.begin_many_instances(cx);
+                let pad: f64 = 16.0;
+                let segs = geom.segs.clone();
+                for seg in &segs {
+                    let min_x = seg.start.x.min(seg.end.x) as f64 - pad;
+                    let min_y = seg.start.y.min(seg.end.y) as f64 - pad;
+                    let max_x = seg.start.x.max(seg.end.x) as f64 + pad;
+                    let max_y = seg.start.y.max(seg.end.y) as f64 + pad;
+                    let bb = Rect {
+                        pos: dvec2(min_x, min_y),
+                        size: dvec2(max_x - min_x, max_y - min_y),
+                    };
+                    self.draw_track.start_xy =
+                        vec2(seg.start.x - min_x as f32, seg.start.y - min_y as f32);
+                    self.draw_track.end_xy =
+                        vec2(seg.end.x - min_x as f32, seg.end.y - min_y as f32);
+                    self.draw_track.t_a = seg.t_a;
+                    self.draw_track.t_b = seg.t_b;
+                    self.draw_track.speed_a = seg.speed_a;
+                    self.draw_track.speed_b = seg.speed_b;
+                    self.draw_track.draw_abs(cx, bb);
+                }
+                self.draw_track.end_many_instances(cx);
+
+                let marker_size: f64 = 14.0;
+                let marker_rect = |p: Vec2| Rect {
+                    pos: dvec2(p.x as f64 - marker_size * 0.5, p.y as f64 - marker_size * 0.5),
+                    size: dvec2(marker_size, marker_size),
+                };
+                self.draw_start_marker.marker_color = vec3(0.063, 0.722, 0.506);
+                self.draw_start_marker.marker_radius = 5.0;
+                self.draw_start_marker.draw_abs(cx, marker_rect(geom.start_screen));
+                self.draw_end_marker.marker_color = vec3(0.478, 0.482, 0.549);
+                self.draw_end_marker.marker_radius = 5.0;
+                self.draw_end_marker.draw_abs(cx, marker_rect(geom.end_screen));
+
+                if let Some(cur) = lerp_segments(&geom.segs, self.walked_ratio) {
+                    let halo_size: f64 = 32.0;
+                    let halo_rect = Rect {
+                        pos: dvec2(
+                            cur.x as f64 - halo_size * 0.5,
+                            cur.y as f64 - halo_size * 0.5,
+                        ),
+                        size: dvec2(halo_size, halo_size),
+                    };
+                    self.draw_halo.draw_abs(cx, halo_rect);
+                }
+            }
+        }
+
         cx.end_turtle_with_area(&mut self.area);
         DrawStep::done()
     }
 }
 
+fn lerp_segments(segs: &[TrackSegment], ratio: f32) -> Option<Vec2> {
+    if segs.is_empty() {
+        return None;
+    }
+    let r = ratio.clamp(0.0, 1.0);
+    for seg in segs {
+        if r <= seg.t_b {
+            let span = (seg.t_b - seg.t_a).max(1e-6);
+            let t = ((r - seg.t_a) / span).clamp(0.0, 1.0);
+            return Some(vec2(
+                seg.start.x + (seg.end.x - seg.start.x) * t,
+                seg.start.y + (seg.end.y - seg.start.y) * t,
+            ));
+        }
+    }
+    Some(segs.last().unwrap().end)
+}
+
 impl TrackCanvas {
+    fn ensure_geom(&mut self, rect: Rect) {
+        let rect_size = vec2(rect.size.x as f32, rect.size.y as f32);
+        let needs_recompute = match self.geom.as_ref() {
+            None => true,
+            Some(g) => (g.rect_size - rect_size).length() > 1.0,
+        };
+        if !needs_recompute {
+            return;
+        }
+        let Some(track) = self.track.as_ref() else { return };
+        if track.points.is_empty() {
+            return;
+        }
+        let bounds = &track.stats.track_bounds;
+        let lat_min = bounds.lat_min;
+        let lat_max = bounds.lat_max;
+        let lon_min = bounds.lon_min;
+        let lon_max = bounds.lon_max;
+        let lat_mid = ((lat_min + lat_max) * 0.5).to_radians();
+        let cos_lat = lat_mid.cos().max(0.1);
+        let lon_span = ((lon_max - lon_min) * cos_lat).max(1e-6);
+        let lat_span = (lat_max - lat_min).max(1e-6);
+
+        let pad: f32 = 24.0;
+        let avail_w = (rect_size.x - pad * 2.0).max(1.0);
+        let avail_h = (rect_size.y - pad * 2.0).max(1.0);
+        let scale = (avail_w as f64 / lon_span).min(avail_h as f64 / lat_span);
+        let mapped_w = (lon_span * scale) as f32;
+        let mapped_h = (lat_span * scale) as f32;
+        let off_x = pad + (avail_w - mapped_w) * 0.5;
+        let off_y = pad + (avail_h - mapped_h) * 0.5;
+
+        let project = |lat: f64, lon: f64| -> Vec2 {
+            let x = off_x + ((lon - lon_min) * cos_lat * scale) as f32;
+            let y = rect_size.y - off_y - ((lat - lat_min) * scale) as f32;
+            vec2(x, y)
+        };
+
+        let n = track.points.len();
+        let target_segs: usize = 180;
+        let stride = (n / target_segs).max(1);
+        let mut indices: Vec<usize> = (0..n).step_by(stride).collect();
+        if *indices.last().unwrap() != n - 1 {
+            indices.push(n - 1);
+        }
+        let speed_lo = track.stats.speed_min_mps;
+        let speed_hi = track.stats.speed_max_mps.max(speed_lo + 1e-3);
+        let normalize = |s: f32| ((s - speed_lo) / (speed_hi - speed_lo)).clamp(0.0, 1.0);
+
+        let total_n = (n - 1).max(1) as f32;
+        let mut segs: Vec<TrackSegment> = Vec::with_capacity(indices.len().saturating_sub(1));
+        for i in 0..indices.len().saturating_sub(1) {
+            let ia = indices[i];
+            let ib = indices[i + 1];
+            let pa = &track.points[ia];
+            let pb = &track.points[ib];
+            let start = project(pa.lat, pa.lon);
+            let end = project(pb.lat, pb.lon);
+            let speed_a = normalize(pa.speed_mps.unwrap_or(0.0));
+            let speed_b = normalize(pb.speed_mps.unwrap_or(0.0));
+            let t_a = ia as f32 / total_n;
+            let t_b = ib as f32 / total_n;
+            segs.push(TrackSegment {
+                start,
+                end,
+                t_a,
+                t_b,
+                speed_a,
+                speed_b,
+            });
+        }
+
+        let start_screen = if let Some(p) = track.points.first() {
+            project(p.lat, p.lon)
+        } else {
+            Vec2::default()
+        };
+        let end_screen = if let Some(p) = track.points.last() {
+            project(p.lat, p.lon)
+        } else {
+            Vec2::default()
+        };
+
+        self.geom = Some(TrackGeom {
+            rect_size,
+            segs,
+            start_screen,
+            end_screen,
+        });
+        self.last_rect_size = rect_size;
+    }
+
     pub fn set_track(&mut self, cx: &mut Cx, track: Option<Arc<Track>>) {
         let changed = match (&self.track, &track) {
             (None, None) => false,
