@@ -1047,12 +1047,20 @@ impl App {
         }
     }
 
-    fn update_guard(&mut self, _cx: &mut Cx, _track: &Track, now: f64) {
+    fn update_guard(&mut self, cx: &mut Cx, _track: &Track, now: f64) {
         if !self.guard_window.valid {
             return;
         }
         let in_window = self.state.current_trkpt_index >= self.guard_window.start_idx
             && self.state.current_trkpt_index <= self.guard_window.end_idx;
+        if in_window && !self.state.contract_guard_active {
+            self.state.contract_guard_active = true;
+            self.guard_active_started_at_secs = now;
+            if !self.guard_card_visible {
+                self.guard_card_visible = true;
+                self.ui.view(cx, ids!(guard_card)).set_visible(cx, true);
+            }
+        }
         if self.state.contract_guard_active {
             let age = now - self.guard_active_started_at_secs;
             if !in_window && age >= GUARD_PULSE_DURATION_SECS {
@@ -1178,6 +1186,11 @@ impl MatchEvent for App {
         self.phase_entered_secs = 0.0;
         self.last_now_secs = 0.0;
 
+        if let Ok(seek) = std::env::var("MOBILE_EXAMPLE_DEMO_SEEK") {
+            if let Ok(p) = seek.parse::<f32>() {
+                self.state.playback_progress = p.clamp(0.0, 0.999);
+            }
+        }
         if let Some(t) = self.track.clone() {
             let p0 = self.state.playback_progress;
             self.state.apply_progress(&t, p0);
