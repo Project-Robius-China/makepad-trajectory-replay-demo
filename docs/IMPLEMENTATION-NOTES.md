@@ -142,24 +142,35 @@ SEEK=0.99 让 stats 在几秒内进入.
 
 ## 已知 BLOCKED / 未做
 
-### B1. 起终点 + 地名 *文字* labels (BLOCKED)
+### B1. 起终点 + 地名 *文字* labels (✅ 已修复 P3-G)
 
-**问题**: TrackCanvas 加 `#[live] draw_label: DrawText` + Splash type_default 设
-`color` + `text_style.font_size` 后, `draw_label.draw_abs(cx, pos, "起点")` 静默
-不渲染.
+**问题** (历史): TrackCanvas `#[live] draw_label: DrawText` 直接调 `draw_label.draw_abs`
+静默无渲染, 因为 DrawText 需要完整字体继承链.
 
-**根因猜测**: DrawText 需要完整的 font_family 继承链 (mod.theme.font_family 等),
-单设 color/font_size 不够. Label widget 工作是因为它从 `mod.widgets.Label` 继承
-全套 text_style.
+**解决方案 (P3-G)**: 改用 Splash Label widget — 但**关键**是必须包一层 View, 在
+View 上设 `walk.abs_pos = Some(dvec2(x, y))` 才能逐帧重定位:
 
-**Workaround 已用**: 起终点改用 7px 大 marker (绿 / 白), 视觉上能区分.
+```
+// Splash:
+label_overlay := View{
+    width: Fill height: Fill flow: Overlay
+    place_label_1_box := View{
+        width: Fit height: Fit
+        place_label_1 := Label{ text: "Big Sur" ... }
+    }
+}
 
-**未来修复路线** (按优先级):
-1. 把 labels 提到 Splash `main_stack` overlay 层, 用 `Label{ margin: Inset{...} }`,
-   每帧 Rust 计算 margin 推过去 (`label.borrow_mut().walk.margin = Margin::...`).
-   优点: 直接复用 Label 完整字体链.
-2. 写 DrawTextWithFont 子类, splash 注册时显式继承 `..mod.theme.font_family`.
-3. 嵌入 DrawSvg + SVG 字体. 最重最干净.
+// Rust per-frame:
+let view = self.ui.view(cx, ids!(place_label_1_box));
+if let Some(mut v) = view.borrow_mut() {
+    v.walk.abs_pos = Some(dvec2(x, y));
+}
+```
+
+**为什么必须包 View**: Label 是 atomic widget, 它的 walk 在父 flow 里被一次性 baked.
+View 有自己的 draw_walk, 每帧重读 abs_pos. View wrapper 把 Label "促升" 为可逐帧
+定位的元素. (关键 bug 修复: 还需要 `#[area]` 显式标注 TrackCanvas.area, 否则 Widget
+derive 用第一个 redraw_field 的 area, 即 polyline 最后一段 capsule 的 tiny rect.)
 
 ### B2. HUD cells icons (SKIPPED)
 

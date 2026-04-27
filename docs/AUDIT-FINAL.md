@@ -23,30 +23,32 @@ MOBILE_EXAMPLE_DEMO_SEEK=0.998 cargo run
 
 | # | BDD 名 | 状态 | 证据 |
 |---|---|---|---|
-| 1 | top_bar_three_elements | ✅ PASS | final_s2 顶栏: 路名 + 本地缓存 pill + 骑行 pill |
+| 1 | top_bar_three_elements | ✅ PASS | audit_s2 顶栏: 路名 + 已同步 pill + 骑行 pill |
 | 2 | profile_label_zh | ✅ PASS | "骑行" 而非 "Cycling" |
 | 3 | hud_field_order | ✅ PASS | 速度 km/h / 心率 bpm / 海拔 m / 踏频 rpm |
-| 4 | data_source_badge_dual | ✅ PASS | "本地缓存"显示 (GitHub 403, fallback), 也支持 "已同步" |
-| 5 | speed_color_three_segments_visible | ✅ PASS | final_s2 walked 段橙峰 + 顶端微 cyan, gray 未走 |
+| 4 | data_source_badge_dual | ✅ PASS | "已同步" (网络成功) / "本地缓存" (网络失败) 双态切换 |
+| 5 | speed_color_three_segments_visible | ✅ PASS | audit_s2 walked 段橙峰 + 顶端微 cyan, gray 未走 |
 | 6 | single_color_dominance_restraint | ✅ PASS | unwalked gray + walked color 各占比合理 |
-| 7 | contract_guard_card_text_and_color | ✅ PASS | final_s3 卡片完整文案 + #FF3B6E 底色 |
-| 8 | stats_grid_naming_fixed | ✅ PASS | final_s4 4 cells 命名顺序对 |
+| 7 | contract_guard_card_text_and_color | ✅ PASS | audit_s3 卡片完整文案 + #FF3B6E 底色 |
+| 8 | stats_grid_naming_fixed | ✅ PASS | audit_s4_v2 4 cells 命名顺序对 |
 | 9 | card_radius_constraints | ✅ PASS | 所有 RoundedView radius 6-12-18 各自合规 |
 | 10 | no_card_nesting | ✅ PASS | HUD cells 各自独立 |
 | 11 | bottom_bar_controls_complete | ✅ PASS | 时间/scrubber/总时间/1x4x16x/暂停 全在 |
 | 12 | huashu_decoration_constraint | ✅ PASS | 无任何 huashu 装饰元素 |
 | 13 | speed_legend_visible | ✅ PASS | "速度 (m/s)" + 3 色渐变 + 0/16 标签 |
 | 14 | compass_and_2d_buttons | ✅ PASS | N + 2D 垂直堆叠 |
-| 15 | place_label_count_color | 🟡 BLOCKED | DrawText 字体未加载, 见 IMPLEMENTATION-NOTES B1 |
-| 16 | start_end_markers | ✅ PASS | 7px 大 marker, 起绿 #10B981, 终白 #F5F5FA |
+| 15 | place_label_count_color | ✅ PASS | 4 个地名 (Big Sur / Pacific / Highway 1 / Point Lobos) + 起终点文字, overlay-Label-in-View 模式 |
+| 16 | start_end_markers | ✅ PASS | 7px marker + "起点 · Ragged Pt" / "终点 · Carmel" 文字标签 |
 | 17 | current_position_halo | ✅ PASS | cyan 32px halo 在 walked_ratio 段位置 |
-| 18 | water_layer_subtle | ✅ PASS | DrawWater SDF, 右半深蓝 0.55 alpha 矩形 |
+| 18 | water_layer_subtle | ✅ PASS | DrawWater SDF + DrawMapGrid 56px 网格底纹 |
 | 19 | hud_mini_bars_count | ✅ PASS | 4 cells, 各 1 bar, 动态宽度 |
 | 20 | speed_button_active_state | ✅ PASS | 4x #x4A60D9 鲜蓝, 1x/16x #x14141C |
 | 21 | pause_button_glyph_toggle | ✅ PASS | 双竖线 (running) / ▶ (paused) toggle |
 | 22 | status_bar_system_drawn | ✅ PASS | 顶栏直接是路名, 无系统时间/电量绘制 |
 
-**总计: 21/22 PASS, 1 BLOCKED (place labels — 字体加载链路单 session 不收敛)**
+**总计: 22/22 PASS** 🎉
+
+最终验收截图: `design/auto/audit_s2_*` (主回放) / `audit_s3_*` (Guard) / `audit_s4_v2_*` (Stats)
 
 ## 行为 BDD 关键场景 (spec.spec.md)
 
@@ -67,10 +69,11 @@ MOBILE_EXAMPLE_DEMO_SEEK=0.998 cargo run
 
 | 元素 | 参考图 | 当前 | 决策 |
 |---|---|---|---|
-| 起终点文字 (起点/终点) | ✅ | ❌ | DrawText font_family 未加载, 单 session 不收敛, 退化为大 marker |
-| 地名 labels | ✅ | ❌ | 同上 |
+| 起终点文字 (起点/终点) | ✅ | ✅ "起点 · Ragged Pt" / "终点 · Carmel" | overlay-Label-in-View pattern |
+| 地名 labels | ✅ | ✅ Big Sur / Pacific / Highway 1 / Point Lobos | 同上, 用真实 GPX 路线地理名 |
+| 地图网格 | ✅ | ✅ DrawMapGrid 56px 单元格 + 噪声块 | 无真实道路数据但有地图氛围 |
 | HUD icons (速度计/心/山/齿轮) | ✅ | ❌ | 需 SVG 资源 + DrawSvg, 时间预算不足 |
-| 真实地图网格/道路 | ✅ | ⚠️ DrawWater 矩形抽象 | demo scope 远超 |
+| 真实地图道路/建筑 | ✅ | ⚠️ 抽象网格 | demo scope 远超 (需要 Mapbox tile / SVG path 集合) |
 | 顶栏 ←箭头 | ✅ | ❌ | visual.spec 明确禁止 (顶栏 3 件套硬约束) |
 
 详细决策档案见 [`IMPLEMENTATION-NOTES.md`](./IMPLEMENTATION-NOTES.md).
