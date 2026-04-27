@@ -1428,6 +1428,32 @@ impl App {
         }
     }
 
+    fn refresh_pause_glyph(&mut self, cx: &mut Cx) {
+        let paused = self.state.is_paused;
+        self.ui.view(cx, ids!(pause_left_bar)).set_visible(cx, !paused);
+        self.ui.view(cx, ids!(pause_right_bar)).set_visible(cx, !paused);
+        self.ui
+            .label(cx, ids!(pause_play_triangle))
+            .set_text(cx, if paused { "▶" } else { "" });
+        self.ui.view(cx, ids!(pause_button)).redraw(cx);
+    }
+
+    fn refresh_speed_buttons(&mut self, cx: &mut Cx) {
+        let active = self.state.playback_speed.round() as i32;
+        for (path, val) in [
+            (ids!(speed_1x_button) as &[LiveId], 1),
+            (ids!(speed_4x_button) as &[LiveId], 4),
+            (ids!(speed_16x_button) as &[LiveId], 16),
+        ] {
+            let view = self.ui.view(cx, path);
+            let active_color = [0.078, 0.078, 0.110, 1.0];
+            let inactive_color = [0.0, 0.0, 0.0, 0.0];
+            let c = if val == active { active_color } else { inactive_color };
+            view.set_uniform(cx, live_id!(color), &c);
+            view.redraw(cx);
+        }
+    }
+
     fn fill_stats(&mut self, cx: &mut Cx, track: &Track) {
         let dist_km = track.stats.distance_m_total / 1000.0;
         let dur_secs = (track.stats.duration_ms_total / 1000).max(0);
@@ -1542,6 +1568,54 @@ impl AppMain for App {
                 self.next_frame = cx.new_next_frame();
             }
         }
+
+        let pause_area = self.ui.view(cx, ids!(pause_button)).area();
+        if let Hit::FingerUp(fe) = event.hits(cx, pause_area) {
+            if fe.is_over && fe.was_tap() {
+                self.state.is_paused = !self.state.is_paused;
+                self.refresh_pause_glyph(cx);
+            }
+        }
+
+        for (path, speed) in [
+            (ids!(speed_1x_button) as &[LiveId], 1.0_f32),
+            (ids!(speed_4x_button) as &[LiveId], 4.0),
+            (ids!(speed_16x_button) as &[LiveId], 16.0),
+        ] {
+            let area = self.ui.view(cx, path).area();
+            if let Hit::FingerUp(fe) = event.hits(cx, area) {
+                if fe.is_over && fe.was_tap() {
+                    self.state.playback_speed = speed;
+                    self.refresh_speed_buttons(cx);
+                }
+            }
+        }
+
+        let scrubber_area = self.ui.view(cx, ids!(scrubber_track)).area();
+        match event.hits(cx, scrubber_area) {
+            Hit::FingerDown(fe) => {
+                let r = scrubber_area.rect(cx);
+                if r.size.x > 1.0 {
+                    let p = ((fe.abs.x - r.pos.x) / r.size.x).clamp(0.0, 1.0) as f32;
+                    if let Some(t) = self.track.clone() {
+                        self.state.apply_progress(&t, p);
+                    }
+                    self.last_scrubber_drag_secs = self.now_secs;
+                }
+            }
+            Hit::FingerMove(fe) => {
+                let r = scrubber_area.rect(cx);
+                if r.size.x > 1.0 {
+                    let p = ((fe.abs.x - r.pos.x) / r.size.x).clamp(0.0, 1.0) as f32;
+                    if let Some(t) = self.track.clone() {
+                        self.state.apply_progress(&t, p);
+                    }
+                    self.last_scrubber_drag_secs = self.now_secs;
+                }
+            }
+            _ => {}
+        }
+
         self.match_event(cx, event);
         self.ui.handle_event(cx, event, &mut Scope::empty());
     }
