@@ -315,7 +315,7 @@ script_mod! {
                             }
                         }
 
-                        guard_edge := View{
+                        guard_edge := GuardEdge{
                             width: Fill height: Fill
                         }
 
@@ -911,6 +911,18 @@ pub struct TrackCanvas {
     #[area] #[rust] area: Area,
 }
 
+#[derive(Script, ScriptHook, Widget)]
+pub struct GuardEdge {
+    #[uid] uid: WidgetUid,
+    #[walk] walk: Walk,
+    #[layout] layout: Layout,
+
+    #[redraw] #[live] draw_edge: DrawGuardEdge,
+
+    #[rust] pulse: f32,
+    #[area] #[rust] area: Area,
+}
+
 #[derive(Default)]
 struct TrackGeom {
     rect_size: Vec2,
@@ -1033,6 +1045,20 @@ impl Widget for TrackCanvas {
     }
 }
 
+fn ease_in_out_cubic(t: f64) -> f64 {
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        let f = 2.0 * t - 2.0;
+        1.0 + f * f * f * 0.5
+    }
+}
+
+fn ease_out_cubic(t: f64) -> f64 {
+    let f = 1.0 - t;
+    1.0 - f * f * f
+}
+
 fn lerp_segments(segs: &[TrackSegment], ratio: f32) -> Option<Vec2> {
     if segs.is_empty() {
         return None;
@@ -1091,7 +1117,7 @@ impl TrackCanvas {
         };
 
         let n = track.points.len();
-        let target_segs: usize = 180;
+        let target_segs: usize = 420;
         let stride = (n / target_segs).max(1);
         let mut indices: Vec<usize> = (0..n).step_by(stride).collect();
         if *indices.last().unwrap() != n - 1 {
@@ -1194,6 +1220,27 @@ impl TrackCanvas {
     }
 }
 
+impl Widget for GuardEdge {
+    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {
+    }
+
+    fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
+        cx.begin_turtle(walk, self.layout);
+        let rect = cx.turtle().rect();
+        self.draw_edge.guard_pulse_phase = self.pulse;
+        self.draw_edge.draw_abs(cx, rect);
+        cx.end_turtle_with_area(&mut self.area);
+        DrawStep::done()
+    }
+}
+
+impl GuardEdge {
+    pub fn set_pulse(&mut self, cx: &mut Cx, pulse: f32) {
+        self.pulse = pulse;
+        self.area.redraw(cx);
+    }
+}
+
 #[derive(Default)]
 struct GuardWindow {
     start_idx: usize,
@@ -1223,8 +1270,6 @@ pub struct App {
     #[rust] guard_active_started_at_secs: f64,
     #[rust] guard_card_visible: bool,
     #[rust] last_scrubber_drag_secs: f64,
-
-    #[live] draw_guard_edge: DrawGuardEdge,
 
     #[rust] next_frame: NextFrame,
 }
@@ -1413,10 +1458,10 @@ impl App {
             }
             PHASE_PATH_DRAW => {
                 let elapsed = now - self.phase_entered_secs;
-                let p = (elapsed / PATH_DRAW_DURATION_SECS).clamp(0.0, 1.0) as f32;
-                track_progress_v = p;
+                let raw = (elapsed / PATH_DRAW_DURATION_SECS).clamp(0.0, 1.0);
+                track_progress_v = ease_in_out_cubic(raw) as f32;
                 walked_ratio_v = 0.0;
-                if p >= 1.0 {
+                if raw >= 1.0 {
                     self.enter_phase(cx, PHASE_PLAYBACK, now);
                 }
             }
@@ -1442,31 +1487,31 @@ impl App {
                 }
             }
             PHASE_STATS => {
-                overlay_dim_v = ((now - self.phase_entered_secs) / 0.5).clamp(0.0, 1.0) as f32;
+                let raw = ((now - self.phase_entered_secs) / 0.6).clamp(0.0, 1.0);
+                overlay_dim_v = ease_out_cubic(raw) as f32;
             }
             _ => {}
         }
 
         let echo_age = (now - self.last_scrubber_drag_secs).max(0.0);
         let scrubber_echo_v = if echo_age < SCRUBBER_ECHO_FADE_SECS {
-            (1.0 - (echo_age / SCRUBBER_ECHO_FADE_SECS)).max(0.0) as f32
+            let t = 1.0 - (echo_age / SCRUBBER_ECHO_FADE_SECS).max(0.0);
+            ease_out_cubic(t.max(0.0)) as f32
         } else {
             0.0
         };
         self.state.scrubber_echo_phase = scrubber_echo_v;
 
         let guard_age = (now - self.guard_active_started_at_secs).max(0.0);
-        let guard_pulse_v = if self.state.contract_guard_active
-            && guard_age < GUARD_PULSE_DURATION_SECS
-        {
-            (1.0 - (guard_age / GUARD_PULSE_DURATION_SECS)).max(0.0) as f32
+        let guard_pulse_v = if self.state.contract_guard_active {
+            let initial = (1.0 - (guard_age / GUARD_PULSE_DURATION_SECS)).max(0.0) as f32;
+            let steady = (0.55 + 0.25 * (now * 8.0).sin()) as f32;
+            initial.max(steady)
         } else {
             0.0
         };
 
         let (hr_phase_now, _) = self.hr_phase(now);
-
-        self.draw_guard_edge.guard_pulse_phase = guard_pulse_v;
 
         let track_arc = self.track.clone();
         let canvas_ref = self.ui.widget(cx, ids!(track_canvas));
@@ -1479,6 +1524,9 @@ impl App {
             canvas.set_overlay_dim(cx, overlay_dim_v);
             canvas.set_scrubber_echo(cx, scrubber_echo_v);
             layout = canvas.marker_layout();
+        }
+        if let Some(mut guard_edge) = self.ui.widget(cx, ids!(guard_edge)).borrow_mut::<GuardEdge>() {
+            guard_edge.set_pulse(cx, guard_pulse_v);
         }
         let canvas_rect = canvas_ref.area().rect(cx);
         if let Some((start, end, _rect_sz)) = layout {
