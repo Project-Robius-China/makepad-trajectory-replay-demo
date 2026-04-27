@@ -1176,6 +1176,15 @@ impl App {
 
     fn compute_guard_window(&mut self) {
         let Some(track) = self.track.as_ref().cloned() else { return };
+        if std::env::var("MOBILE_EXAMPLE_DEMO_GUARD").is_ok() {
+            let n = track.points.len();
+            self.guard_window = GuardWindow {
+                start_idx: ((n as f32) * 0.30) as usize,
+                end_idx: ((n as f32) * 0.50) as usize,
+                valid: true,
+            };
+            return;
+        }
         let max_hr = effective_max_hr(&self.user, &track) as f32;
         let threshold = max_hr * 0.92;
         for (i, _p) in track.points.iter().enumerate() {
