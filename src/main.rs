@@ -41,9 +41,9 @@ script_mod! {
 
         pixel: fn() {
             let p = self.pos * self.rect_size
-            let cell: float = 56.0
-            let lx = mod(p.x, cell)
-            let ly = mod(p.y, cell)
+            let cell = 56.0
+            let lx = p.x - floor(p.x / cell) * cell
+            let ly = p.y - floor(p.y / cell) * cell
             let line_w = 1.0
             let on_x = step(lx, line_w) + step(cell - line_w, lx)
             let on_y = step(ly, line_w) + step(cell - line_w, ly)
@@ -179,6 +179,12 @@ script_mod! {
 
     let TrackCanvasBase = #(TrackCanvas::register_widget(vm))
     let TrackCanvas = set_type_default() do TrackCanvasBase{
+        width: Fill
+        height: Fill
+    }
+
+    let GuardEdgeBase = #(GuardEdge::register_widget(vm))
+    let GuardEdge = set_type_default() do GuardEdgeBase{
         width: Fill
         height: Fill
     }
@@ -574,10 +580,20 @@ script_mod! {
                             draw_bg.color: #x14141C
                             draw_bg.radius: 6.
 
-                            Label{
-                                text: "速度 km/h"
-                                draw_text.color: #x7A7B8C
-                                draw_text.text_style.font_size: 9
+                            View{
+                                width: Fit height: Fit flow: Right spacing: 4
+                                align: Align{ y: 0.5 }
+                                hud_speed_icon := RoundedView{
+                                    width: 6 height: 6
+                                    new_batch: true
+                                    draw_bg.color: #xFF8A3D
+                                    draw_bg.radius: 3.
+                                }
+                                Label{
+                                    text: "速度 km/h"
+                                    draw_text.color: #x7A7B8C
+                                    draw_text.text_style.font_size: 9
+                                }
                             }
                             hud_speed_value := Label{
                                 text: "—"
@@ -610,10 +626,20 @@ script_mod! {
                             draw_bg.color: #x14141C
                             draw_bg.radius: 6.
 
-                            Label{
-                                text: "心率 bpm"
-                                draw_text.color: #x7A7B8C
-                                draw_text.text_style.font_size: 9
+                            View{
+                                width: Fit height: Fit flow: Right spacing: 4
+                                align: Align{ y: 0.5 }
+                                hud_hr_icon := RoundedView{
+                                    width: 6 height: 6
+                                    new_batch: true
+                                    draw_bg.color: #xFF3B6E
+                                    draw_bg.radius: 3.
+                                }
+                                Label{
+                                    text: "心率 bpm"
+                                    draw_text.color: #x7A7B8C
+                                    draw_text.text_style.font_size: 9
+                                }
                             }
                             hud_hr_value := Label{
                                 text: "—"
@@ -646,10 +672,20 @@ script_mod! {
                             draw_bg.color: #x14141C
                             draw_bg.radius: 6.
 
-                            Label{
-                                text: "海拔 m"
-                                draw_text.color: #x7A7B8C
-                                draw_text.text_style.font_size: 9
+                            View{
+                                width: Fit height: Fit flow: Right spacing: 4
+                                align: Align{ y: 0.5 }
+                                hud_ele_icon := RoundedView{
+                                    width: 6 height: 6
+                                    new_batch: true
+                                    draw_bg.color: #x00E5FF
+                                    draw_bg.radius: 3.
+                                }
+                                Label{
+                                    text: "海拔 m"
+                                    draw_text.color: #x7A7B8C
+                                    draw_text.text_style.font_size: 9
+                                }
                             }
                             hud_ele_value := Label{
                                 text: "—"
@@ -682,10 +718,20 @@ script_mod! {
                             draw_bg.color: #x14141C
                             draw_bg.radius: 6.
 
-                            Label{
-                                text: "踏频 rpm"
-                                draw_text.color: #x7A7B8C
-                                draw_text.text_style.font_size: 9
+                            View{
+                                width: Fit height: Fit flow: Right spacing: 4
+                                align: Align{ y: 0.5 }
+                                hud_cad_icon := RoundedView{
+                                    width: 6 height: 6
+                                    new_batch: true
+                                    draw_bg.color: #xE8E8F0
+                                    draw_bg.radius: 3.
+                                }
+                                Label{
+                                    text: "踏频 rpm"
+                                    draw_text.color: #x7A7B8C
+                                    draw_text.text_style.font_size: 9
+                                }
                             }
                             hud_cad_value := Label{
                                 text: "—"
