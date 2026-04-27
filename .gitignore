@@ -1,0 +1,15 @@
+# Rust / Cargo
+target/
+**/*.rs.bk
+
+# macOS
+.DS_Store
+
+# 自动截图落盘目录 (makepad-screenshot skill 产物, 用完即弃)
+# design/refs/ 是 git 跟踪的视觉参考底板, 不要误伤
+design/auto/
+
+# IDE
+.idea/
+.vscode/
+*.swp

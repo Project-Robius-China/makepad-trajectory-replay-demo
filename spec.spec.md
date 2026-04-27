@@ -15,7 +15,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 - Engine scope: 通用 trajectory replay engine，支持 `cycling`、`running`、`hiking`、`walking`、`transit`、`travel`、`flight` 七类 profile 的 manifest 与归一化。
 - Renderer scope: 首版渲染层只实现 `cycling` 默认 profile，不提供运动类型切换 UI。
 - 提交目标: `Project-Robius-China` 组织，PR 面向 community review。
-- 本轮交付: 只改 `prd.md` 与 `spec.spec`，不写 Cargo 项目、不添加源码、不下载数据文件。
+- 本轮交付: 只改 `prd.md` 与 `spec.spec.md`，不写 Cargo 项目、不添加源码、不下载数据文件。
 
 ### 数据层
 
@@ -61,12 +61,33 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 - AI mock 文案: `建议加速 30% 通过此段，缩短爬坡时间。`
 - reject 后原 AI 文案不出现在任何可见 UI 区域。
 
+### S2 UI 元素
+
+- 渲染管线: 仅 2D shader，不存在 3D 渲染管线 / 3D 模式 / 3D 切换。
+- 速度图例 (speed legend): 主画布右上角横向渐变条，3 stops 颜色字面量分别等于 `#E8E8F0` / `#FF8A3D` / `#00E5FF`。
+- 速度图例最大刻度: 启动期计算 `max_speed_mps = ceil(max(track.points.iter().map(|p| p.speed_mps)))`，启动后不再变。
+- compass 按钮: 圆形 32dp，点击后视角中心更新到当前 playback position 屏幕坐标，不修改 PlaybackState。
+- 2D 锁定按钮: 圆形 32dp，装饰性，点击不触发任何 state 变更，不存在 3D 模式可切换。
+- 地名标签层 (geo labels): 数据来源优先 `manifest.geo_labels[]`，缺失则从 bundled `assets/geo-labels.json` 读取，4-10 条。
+- 地名标签字段: `{ name: String, lat: f64, lon: f64 }`，启动期一次性投影到屏幕坐标。
+- 起点 marker: 屏幕坐标对应 `track.points[0]`，颜色 `#10B981` 圆点 8dp + "起点" 文字。
+- 终点 marker: 屏幕坐标对应 `track.points.last()`，颜色 `#7A7B8C` 圆点 8dp + "终点" 文字。
+- 当前位置 halo: 直径在 16-24dp 之间随 HR-driven pulse 呼吸，颜色固定 `#00E5FF`，不依赖速度区间。
+- 水域层 (water layer): 静态 SDF，不消费任何 shader uniform，几何 / 颜色 / opacity 在帧间不变。
+- HUD mini bar: 启动期为 speed / hr / ele / cad 四字段计算 `(min, max)`，运行期 mini bar 值 = `(current - min) / (max - min)`。
+- HUD mini bar 渲染: 已填充段使用该字段主色，未填充段使用 `#3B3B46`。
+- 倍速按钮: 1x / 4x / 16x 三选一，任意时刻恰有 1 个为活跃态，默认 4x。
+- 倍速按钮 click: 切换 `PlaybackState.playback_speed` 到 `{1, 4, 16}` 中对应值，UI 活跃态同步更新。
+- 暂停按钮: click 翻转 `PlaybackState.is_paused`，暂停期所有动画 uniform 停在当前帧，scrubber 拖动仍可改变 `playback_progress`。
+- 系统状态栏: 由 Android 系统绘制，app 渲染目标高度等于 `screen_height - status_bar_height`，顶栏不与系统状态栏重叠。
+- 顶栏: 不绘制返回箭头，不绘制设置 / 登录 / 分享入口；3 件套为路线名 / 数据源徽章 / profile 标签。
+
 ## 边界
 
 ### Allowed Changes
 
 - prd.md
-- spec.spec
+- spec.spec.md
 - assets/cycling-track.gpx
 - assets/static-tile.png
 - Cargo.toml
@@ -77,7 +98,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 
 ### Forbidden
 
-- 本轮不得写实现代码；仅允许改 `prd.md` 与 `spec.spec`
+- 本轮不得写实现代码；仅允许改 `prd.md` 与 `spec.spec.md`
 - 不得引入 `tokio`、`reqwest`、`async-std`
 - 不得引入 `georust/gpx`、`serde-xml-rs`
 - 不得引入或通过依赖树拉入 `aws-lc-rs`
@@ -351,3 +372,146 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   并且 shader uniform scrubber_echo_phase 在 300 到 500 毫秒内从 1.0 衰减到 0.0
   并且 echo trail 显示在 scrubber thumb 后方
   并且 echo trail 不会额外修改 PlaybackState.playback_progress
+
+场景: 速度图例 3 stops 映射 speed token
+  测试: test_speed_legend_gradient_stops
+  层级: shader
+  假设 app 处于 S2 主屏回放状态
+  并且 速度图例已渲染
+  当 像素采样速度图例渐变条最左端 / 中间 / 最右端 3 个位置
+  那么 最左端像素颜色匹配 #E8E8F0
+  并且 中间像素颜色匹配 #FF8A3D
+  并且 最右端像素颜色匹配 #00E5FF
+  并且 渐变方向为水平由左至右
+  并且 渐变条尺寸约为 96dp 乘 8dp
+
+场景: 速度图例最大刻度等于轨迹最大速度
+  测试: test_speed_legend_max_dynamic
+  层级: integration
+  替身: 注入 GPX max_speed = 11.7 m/s
+  假设 GPX 派生最大速度等于 11.7 m/s
+  当 app 启动并完成 GPX parse
+  那么 速度图例右端刻度文字等于 "12"
+  并且 速度图例左端刻度文字等于 "0"
+  并且 启动后改变 playback_progress 不修改图例右端文字
+
+场景: 地名标签层从 manifest 加载
+  测试: test_geo_labels_from_manifest
+  层级: integration
+  替身: mock manifest 含 geo_labels 字段 6 条
+  假设 manifest.geo_labels 字段含 6 条 {name, lat, lon}
+  当 app 启动并完成 manifest parse
+  那么 主画布渲染 6 条地名标签
+  并且 每条标签屏幕坐标由 lat lon 投影计算得到
+  并且 manifest.geo_labels 缺失时数据层回退读取 assets/geo-labels.json
+  并且 fallback 读取失败时主画布渲染 0 条地名标签且不 panic
+
+场景: compass 按钮点击重置视角中心
+  测试: test_compass_recenters_viewport
+  层级: widget
+  假设 app 处于 S2 主屏回放状态
+  并且 PlaybackState.playback_progress 等于 0.6
+  当 用户点击 compass 按钮
+  那么 主画布视角中心更新到 track.points[round(0.6 * len)] 的屏幕坐标
+  并且 PlaybackState.playback_progress 不变
+  并且 PlaybackState.current_trkpt_index 不变
+  并且 主画布旋转角重置为 0
+
+场景: 2D 锁定按钮无副作用
+  测试: test_2d_lock_inert
+  层级: widget
+  假设 app 处于 S2 主屏回放状态
+  当 用户点击 2D 锁定按钮
+  那么 PlaybackState 字段无任何变化
+  并且 渲染模式始终为 2D
+  并且 不存在 3D 渲染管线被触发
+  并且 按钮视觉态不变化
+
+场景: 当前位置 halo 由 HR pulse 驱动
+  测试: test_position_halo_hr_driven
+  层级: shader
+  假设 app 处于 S2 主屏回放状态
+  并且 当前 trkpt heart_rate_bpm 等于 168
+  当 渲染当前位置 halo
+  那么 halo 直径在 16dp 到 24dp 之间随时间正弦振荡
+  并且 振荡频率与当前 heart_rate_bpm 比值成正比
+  并且 halo 颜色字面量等于 #00E5FF
+  并且 halo 直径不随 polyline_color_mix 变化
+
+场景: 起点终点 marker 屏幕坐标固定
+  测试: test_start_end_marker_positions
+  层级: widget
+  假设 app 处于 S2 主屏回放状态
+  并且 track.points 长度等于 8234
+  当 渲染起点 marker 与终点 marker
+  那么 起点 marker 屏幕坐标对应 track.points[0] 的投影
+  并且 终点 marker 屏幕坐标对应 track.points[8233] 的投影
+  并且 起点 marker 颜色字面量等于 #10B981
+  并且 终点 marker 颜色字面量等于 #7A7B8C
+  并且 两个 marker 在 playback_progress 从 0 到 1 整个区间始终可见
+
+场景: HUD mini bar 用全局 min max 归一化
+  测试: test_hud_mini_bar_normalized
+  层级: widget
+  假设 全轨迹 speed 区间为 (0.4, 12.0) m/s
+  并且 当前 trkpt speed_mps 等于 8.6
+  当 HUD speed 单元渲染
+  那么 mini bar 已填充占比等于 (8.6 - 0.4) / (12.0 - 0.4)
+  并且 已填充段颜色对应该字段主色
+  并且 未填充段颜色字面量等于 #3B3B46
+  并且 hr / ele / cad 三个字段也按各自 (min, max) 区间归一化
+
+场景: 倍速按钮唯一活跃且默认 4x
+  测试: test_speed_button_unique_active
+  层级: widget
+  假设 app 启动并进入 S2 主屏
+  当 检查倍速按钮组初始态
+  那么 4x 按钮处于活跃态
+  并且 1x 与 16x 按钮处于非活跃态
+  并且 PlaybackState.playback_speed 等于 4
+  当 用户点击 16x 按钮
+  那么 16x 按钮变为活跃态
+  并且 1x 与 4x 按钮变为非活跃态
+  并且 PlaybackState.playback_speed 等于 16
+  并且 任意时刻 3 个按钮中恰有 1 个为活跃态
+
+场景: 暂停按钮翻转 is_paused 并冻结动画
+  测试: test_pause_button_freezes_uniforms
+  层级: widget
+  假设 app 处于 S2 主屏回放状态
+  并且 PlaybackState.is_paused 等于 false
+  当 用户点击暂停按钮
+  那么 PlaybackState.is_paused 等于 true
+  并且 暂停按钮显示三角 ▶ 字形
+  并且 shader uniform track_progress 在暂停期不变化
+  并且 shader uniform polyline_color_mix 在暂停期不变化
+  并且 shader uniform particle_density 在暂停期不变化
+  并且 用户拖动 scrubber 仍可修改 PlaybackState.playback_progress
+  当 用户再次点击暂停按钮
+  那么 PlaybackState.is_paused 等于 false
+  并且 暂停按钮显示双竖线 ⏸ 字形
+
+场景: 水域层不消费 shader uniform
+  测试: test_water_layer_static
+  层级: shader
+  假设 app 处于 S2 主屏回放状态
+  当 检查水域层 shader 代码与渲染输出
+  那么 水域层 fragment shader 不引用 track_progress
+  并且 水域层 fragment shader 不引用 polyline_color_mix
+  并且 水域层 fragment shader 不引用 particle_density
+  并且 水域层 fragment shader 不引用 elevation_z
+  并且 水域层 fragment shader 不引用 guard_pulse_phase
+  并且 水域层 fragment shader 不引用 walked_segment_ratio
+  并且 水域层 fragment shader 不引用 scrubber_echo_phase
+  并且 水域层连续两帧像素采样输出完全一致
+
+场景: app 渲染目标不覆盖系统状态栏
+  测试: test_status_bar_not_drawn_by_app
+  层级: integration
+  替身: 真实 Android 设备
+  假设 Android 设备 status_bar_height 等于 24dp
+  当 app 进入 S2 主屏并渲染
+  那么 主屏渲染目标高度等于 屏幕高 减去 24dp
+  并且 顶栏第一行像素 y 坐标大于等于 24dp
+  并且 系统状态栏区域由系统绘制信号 / wifi / 电量 / 时间
+  并且 app 不在 status_bar_height 区域内绘制任何像素

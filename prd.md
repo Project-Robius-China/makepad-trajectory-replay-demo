@@ -1,7 +1,7 @@
 # Makepad Android 轨迹回放能力 Demo PRD
 
 > 项目目标：为 Project-Robius-China 组织提交一个可由社区 review 的 Makepad Android 示例需求文档。
-> 当前交付：仅 PRD 与 `spec.spec`，不写实现代码。
+> 当前交付：仅 PRD 与 `spec.spec.md`，不写实现代码。
 > 默认体验：cycling 轨迹回放。
 > 长期方向：通用 trajectory replay engine，可承载运动轨迹、旅行轨迹和飞行轨迹等多类数据。
 
@@ -376,6 +376,23 @@ accent_warning:  #FF3B6E
 
 **scrubber echo**用于改善拖动反馈。用户快速拖动时，thumb 后方保留 300-500ms 的淡色回声，显示刚刚经过的位置。echo 不改变真实 playback progress，只是视觉反馈。
 
+### 6.4 视觉设计 spec 与真值优先级
+
+§6.1 ~ §6.3 是视觉契约的文字描述层；执行层由独立文件 `visual.spec.md` 承载，以 BDD 场景形式锁定 mockup 中已经达到的视觉效果，并把 mockup 残留的 3 处不一致（顶栏返回箭头 / profile 标签英文 Cycling / 主回放仅暖橙单色）强制纠偏。
+
+视觉真值优先级如下，冲突时以高优先级为准：
+
+1. **`visual.spec.md` BDD 场景**（最高，机械可验证）
+2. **`prd.md` §6 视觉契约**（文字描述）
+3. **`design/refs/*.png` 参考底板**（视觉氛围，不作为像素真值）
+
+参考底板存放在 `design/refs/`，文件命名与故事板编号对齐：
+
+- `design/refs/storyboard-1.png`：S0 同步 / S1 path-draw / S3 Guard 拦截 / S4 stats 收尾 四宫格
+- `design/refs/storyboard-2.png`：S2 主回放 / S3 Guard 拦截 / S4 stats 收尾 三联竖屏
+
+当 mockup 与 `visual.spec.md` 冲突时，mockup 必须重画；当 `visual.spec.md` 与 `prd.md` §6 冲突时，需要先评审是否更新文字契约，再同步至 spec。
+
 ---
 
 ## 7. Shader 与渲染能力
@@ -537,12 +554,12 @@ ureq = { version = "2", default-features = false, features = ["tls", "rustls-rin
 本轮只验收文档：
 
 - `prd.md` 全文改为通用 engine + cycling 默认的开源工程口吻。
-- `spec.spec` 保留原 18 个场景结构，并扩展为 22 个场景。
+- `spec.spec.md` 保留原 18 个场景结构，并扩展为 22 个场景。
 - 新增场景覆盖：数据 repo、通用 engine、多类型数据层、已走段分色、scrubber echo。
 - 数据要求覆盖：GitHub API 获取、集中数据仓库、运动 / 旅行 / 飞行 profile。
 - spec 可被 `agent-spec parse` 解析，且 lint 分数不低于 0.7。
 
-后续实现验收由 `spec.spec` 驱动。PRD 负责解释设计背景和工程边界，spec 负责机械可验证的完成条件。
+后续实现验收由 `spec.spec.md` 驱动。PRD 负责解释设计背景和工程边界，spec 负责机械可验证的完成条件。
 
 ---
 
@@ -555,7 +572,7 @@ ureq = { version = "2", default-features = false, features = ["tls", "rustls-rin
 建议提交内容：
 
 - `prd.md`
-- `spec.spec`
+- `spec.spec.md`
 - 后续实现 PR 的 README 链接到上述两份文档。
 
 review 重点：
