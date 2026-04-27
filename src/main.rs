@@ -34,6 +34,20 @@ app_main!(App);
 script_mod! {
     use mod.prelude.widgets.*
 
+    set_type_default() do #(DrawWater::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        water_color: vec3(0.043, 0.078, 0.157)
+        edge_softness: 18.0
+
+        pixel: fn() {
+            let p = self.pos
+            let d = min(min(p.x, 1. - p.x), min(p.y, 1. - p.y)) * min(self.rect_size.x, self.rect_size.y)
+            let edge_a = clamp(d / self.edge_softness, 0., 1.)
+            let alpha = 0.55 * edge_a
+            return Pal.premul(vec4(self.water_color, alpha))
+        }
+    }
+
     set_type_default() do #(DrawTrack::script_shader(vm)){
         ..mod.draw.DrawQuad
         track_progress: 0.
@@ -173,10 +187,19 @@ script_mod! {
 
                         sync_badge := RoundedView{
                             width: Fit height: Fit
-                            padding: Inset{ left: 8 right: 8 top: 4 bottom: 4 }
+                            padding: Inset{ left: 10 right: 10 top: 5 bottom: 5 }
+                            flow: Right
+                            spacing: 5
+                            align: Align{ y: 0.5 }
                             new_batch: true
                             draw_bg.color: #x14141C
-                            draw_bg.radius: 4.
+                            draw_bg.radius: 12.
+                            sync_badge_dot := RoundedView{
+                                width: 6 height: 6
+                                new_batch: true
+                                draw_bg.color: #x4ADE80
+                                draw_bg.radius: 3.
+                            }
                             sync_badge_label := Label{
                                 text: "同步中..."
                                 draw_text.color: #xF5F5FA
@@ -184,10 +207,17 @@ script_mod! {
                             }
                         }
 
-                        profile_label := Label{
-                            text: "骑行"
-                            draw_text.color: #x7A7B8C
-                            draw_text.text_style.font_size: 11
+                        profile_pill := RoundedView{
+                            width: Fit height: Fit
+                            padding: Inset{ left: 10 right: 10 top: 5 bottom: 5 }
+                            new_batch: true
+                            draw_bg.color: #x14141C
+                            draw_bg.radius: 12.
+                            profile_label := Label{
+                                text: "骑行"
+                                draw_text.color: #xF5F5FA
+                                draw_text.text_style.font_size: 11
+                            }
                         }
                     }
 
@@ -642,49 +672,49 @@ script_mod! {
                         }
 
                         speed_1x_button := RoundedView{
-                            width: 32 height: 26
+                            width: 36 height: 28
                             align: Center
                             new_batch: true
-                            draw_bg.color: #x00000000
-                            draw_bg.radius: 6.
+                            draw_bg.color: #x14141C
+                            draw_bg.radius: 8.
                             speed_1x_label := Label{
                                 text: "1x"
-                                draw_text.color: #x7A7B8C
-                                draw_text.text_style.font_size: 11
+                                draw_text.color: #xCCCCDD
+                                draw_text.text_style.font_size: 12
                             }
                         }
                         speed_4x_button := RoundedView{
-                            width: 32 height: 26
+                            width: 36 height: 28
                             align: Center
                             new_batch: true
-                            draw_bg.color: #x14141C
-                            draw_bg.radius: 6.
+                            draw_bg.color: #x4A60D9
+                            draw_bg.radius: 8.
                             speed_4x_label := Label{
                                 text: "4x"
-                                draw_text.color: #xF5F5FA
-                                draw_text.text_style.font_size: 11
+                                draw_text.color: #xFFFFFF
+                                draw_text.text_style.font_size: 12
                             }
                         }
                         speed_16x_button := RoundedView{
-                            width: 32 height: 26
+                            width: 36 height: 28
                             align: Center
                             new_batch: true
-                            draw_bg.color: #x00000000
-                            draw_bg.radius: 6.
+                            draw_bg.color: #x14141C
+                            draw_bg.radius: 8.
                             speed_16x_label := Label{
                                 text: "16x"
-                                draw_text.color: #x7A7B8C
-                                draw_text.text_style.font_size: 11
+                                draw_text.color: #xCCCCDD
+                                draw_text.text_style.font_size: 12
                             }
                         }
                         pause_button := RoundedView{
-                            width: 36 height: 36
+                            width: 40 height: 40
                             align: Center
                             flow: Right
-                            spacing: 4
+                            spacing: 5
                             new_batch: true
-                            draw_bg.color: #x14141C
-                            draw_bg.radius: 18.
+                            draw_bg.color: #x1F1F2C
+                            draw_bg.radius: 20.
                             pause_left_bar := RoundedView{
                                 width: 4 height: 14
                                 new_batch: true
@@ -755,6 +785,14 @@ pub struct DrawGuardEdge {
     #[live] guard_pulse_phase: f32,
 }
 
+#[derive(Script, ScriptHook)]
+#[repr(C)]
+pub struct DrawWater {
+    #[deref] draw_super: DrawQuad,
+    #[live] water_color: Vec3,
+    #[live] edge_softness: f32,
+}
+
 #[derive(Script, ScriptHook, Widget)]
 pub struct TrackCanvas {
     #[uid] uid: WidgetUid,
@@ -765,6 +803,7 @@ pub struct TrackCanvas {
     #[live] draw_start_marker: DrawMarker,
     #[live] draw_end_marker: DrawMarker,
     #[live] draw_halo: DrawHalo,
+    #[live] draw_water: DrawWater,
 
     #[rust] track: Option<Arc<Track>>,
     #[rust] geom: Option<TrackGeom>,
@@ -804,6 +843,16 @@ impl Widget for TrackCanvas {
         cx.begin_turtle(walk, self.layout);
         let rect = cx.turtle().rect();
         self.ensure_geom(rect);
+
+        let water_w = (rect.size.x * 0.42).max(40.0);
+        let water_x = rect.pos.x + rect.size.x - water_w - 18.0;
+        self.draw_water.draw_abs(
+            cx,
+            Rect {
+                pos: dvec2(water_x, rect.pos.y + 80.0),
+                size: dvec2(water_w, rect.size.y - 160.0),
+            },
+        );
 
         if let Some(geom) = self.geom.as_ref() {
             if !geom.segs.is_empty() {
@@ -1085,6 +1134,14 @@ impl App {
         self.ui
             .label(cx, ids!(profile_label))
             .set_text(cx, profile_label);
+        let dot_color: [f32; 4] = match self.state.network_state {
+            NetworkState::Idle | NetworkState::Fetching => [0.95, 0.74, 0.18, 1.0],
+            NetworkState::Success => [0.29, 0.87, 0.50, 1.0],
+            NetworkState::Fallback => [0.48, 0.48, 0.55, 1.0],
+        };
+        self.ui
+            .view(cx, ids!(sync_badge_dot))
+            .set_uniform(cx, live_id!(color), &dot_color);
     }
 
     fn refresh_sync_overlay(&mut self, cx: &mut Cx) {
@@ -1455,8 +1512,8 @@ impl App {
             (ids!(speed_16x_button) as &[LiveId], 16),
         ] {
             let view = self.ui.view(cx, path);
-            let active_color = [0.078, 0.078, 0.110, 1.0];
-            let inactive_color = [0.0, 0.0, 0.0, 0.0];
+            let active_color = [0.290, 0.376, 0.851, 1.0];
+            let inactive_color = [0.078, 0.078, 0.110, 1.0];
             let c = if val == active { active_color } else { inactive_color };
             view.set_uniform(cx, live_id!(color), &c);
             view.redraw(cx);
