@@ -34,6 +34,30 @@ app_main!(App);
 script_mod! {
     use mod.prelude.widgets.*
 
+    set_type_default() do #(DrawMapGrid::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        grid_color: vec3(0.25, 0.27, 0.36)
+        bg_color: vec3(0.055, 0.060, 0.082)
+
+        pixel: fn() {
+            let p = self.pos * self.rect_size
+            let cell: float = 56.0
+            let lx = mod(p.x, cell)
+            let ly = mod(p.y, cell)
+            let line_w = 1.0
+            let on_x = step(lx, line_w) + step(cell - line_w, lx)
+            let on_y = step(ly, line_w) + step(cell - line_w, ly)
+            let grid_a = clamp(on_x + on_y, 0., 1.) * 0.85
+            let block_x = floor(p.x / cell)
+            let block_y = floor(p.y / cell)
+            let h = fract(sin(block_x * 12.9898 + block_y * 78.233) * 43758.5453)
+            let block_a = step(0.78, h) * 0.30
+            let final_color = mix(self.bg_color, self.grid_color, grid_a) +
+                              vec3(0.06, 0.07, 0.10) * block_a
+            return Pal.premul(vec4(final_color, 1.0))
+        }
+    }
+
     set_type_default() do #(DrawWater::script_shader(vm)){
         ..mod.draw.DrawQuad
         water_color: vec3(0.043, 0.078, 0.157)
@@ -228,6 +252,67 @@ script_mod! {
                         track_canvas := TrackCanvas{
                             width: Fill
                             height: Fill
+                        }
+
+                        label_overlay := View{
+                            width: Fill height: Fill
+                            flow: Overlay
+                            new_batch: true
+
+                            place_label_1_box := View{
+                                width: Fit height: Fit
+                                place_label_1 := Label{
+                                    text: "Big Sur"
+                                    width: Fit height: Fit
+                                    draw_text.color: #x6F7388
+                                    draw_text.text_style.font_size: 10
+                                }
+                            }
+                            place_label_2_box := View{
+                                width: Fit height: Fit
+                                place_label_2 := Label{
+                                    text: "Pacific"
+                                    width: Fit height: Fit
+                                    draw_text.color: #x4A5C7A
+                                    draw_text.text_style.font_size: 11
+                                }
+                            }
+                            place_label_3_box := View{
+                                width: Fit height: Fit
+                                place_label_3 := Label{
+                                    text: "Highway 1"
+                                    width: Fit height: Fit
+                                    draw_text.color: #x6F7388
+                                    draw_text.text_style.font_size: 9
+                                }
+                            }
+                            place_label_4_box := View{
+                                width: Fit height: Fit
+                                place_label_4 := Label{
+                                    text: "Point Lobos"
+                                    width: Fit height: Fit
+                                    draw_text.color: #x6F7388
+                                    draw_text.text_style.font_size: 9
+                                }
+                            }
+                            start_marker_label_box := View{
+                                width: Fit height: Fit
+                                start_marker_label := Label{
+                                    text: "起点 · Ragged Pt"
+                                    width: Fit height: Fit
+                                    draw_text.color: #x10B981
+                                    draw_text.text_style.font_size: 10
+                                }
+                            }
+                            end_marker_label_box := View{
+                                width: Fit height: Fit
+                                end_marker_label := Label{
+                                    text: "终点 · Carmel"
+                                    width: Fit height: Fit
+                                    draw_text.color: #xF5F5FA
+                                    draw_text.text_style.font_size: 10
+                                }
+                            }
                         }
 
                         guard_edge := View{
@@ -793,6 +878,14 @@ pub struct DrawWater {
     #[live] edge_softness: f32,
 }
 
+#[derive(Script, ScriptHook)]
+#[repr(C)]
+pub struct DrawMapGrid {
+    #[deref] draw_super: DrawQuad,
+    #[live] grid_color: Vec3,
+    #[live] bg_color: Vec3,
+}
+
 #[derive(Script, ScriptHook, Widget)]
 pub struct TrackCanvas {
     #[uid] uid: WidgetUid,
@@ -804,6 +897,7 @@ pub struct TrackCanvas {
     #[live] draw_end_marker: DrawMarker,
     #[live] draw_halo: DrawHalo,
     #[live] draw_water: DrawWater,
+    #[live] draw_map: DrawMapGrid,
 
     #[rust] track: Option<Arc<Track>>,
     #[rust] geom: Option<TrackGeom>,
@@ -814,7 +908,7 @@ pub struct TrackCanvas {
     #[rust] guard_pulse: f32,
     #[rust] overlay_dim_val: f32,
 
-    #[rust] area: Area,
+    #[area] #[rust] area: Area,
 }
 
 #[derive(Default)]
@@ -843,6 +937,8 @@ impl Widget for TrackCanvas {
         cx.begin_turtle(walk, self.layout);
         let rect = cx.turtle().rect();
         self.ensure_geom(rect);
+
+        self.draw_map.draw_abs(cx, rect);
 
         let water_w = (rect.size.x * 0.42).max(40.0);
         let water_x = rect.pos.x + rect.size.x - water_w - 18.0;
@@ -917,7 +1013,7 @@ impl Widget for TrackCanvas {
                         size: dvec2(big_marker_size, big_marker_size),
                     },
                 );
-                self.draw_end_marker.marker_color = vec3(0.961, 0.961, 0.980);
+                self.draw_end_marker.marker_color = vec3(0.478, 0.482, 0.549);
                 self.draw_end_marker.marker_radius = 7.0;
                 self.draw_end_marker.draw_abs(
                     cx,
@@ -1091,6 +1187,10 @@ impl TrackCanvas {
     pub fn set_scrubber_echo(&mut self, cx: &mut Cx, phase: f32) {
         self.draw_track.scrubber_echo_phase = phase;
         self.area.redraw(cx);
+    }
+
+    pub fn marker_layout(&self) -> Option<(Vec2, Vec2, Vec2)> {
+        self.geom.as_ref().map(|g| (g.start_screen, g.end_screen, g.rect_size))
     }
 }
 
@@ -1370,6 +1470,7 @@ impl App {
 
         let track_arc = self.track.clone();
         let canvas_ref = self.ui.widget(cx, ids!(track_canvas));
+        let mut layout: Option<(Vec2, Vec2, Vec2)> = None;
         if let Some(mut canvas) = canvas_ref.borrow_mut::<TrackCanvas>() {
             canvas.set_track(cx, track_arc);
             canvas.set_progress(cx, walked_ratio_v, track_progress_v);
@@ -1377,6 +1478,24 @@ impl App {
             canvas.set_guard_pulse(cx, guard_pulse_v);
             canvas.set_overlay_dim(cx, overlay_dim_v);
             canvas.set_scrubber_echo(cx, scrubber_echo_v);
+            layout = canvas.marker_layout();
+        }
+        let canvas_rect = canvas_ref.area().rect(cx);
+        if let Some((start, end, _rect_sz)) = layout {
+            let cx_x = canvas_rect.pos.x;
+            let cx_y = canvas_rect.pos.y;
+            let w = canvas_rect.size.x;
+            let h = canvas_rect.size.y;
+            let start_x = (cx_x + start.x as f64 - 130.0).clamp(cx_x + 8.0, cx_x + w - 130.0);
+            let start_y = (cx_y + start.y as f64 - 4.0).clamp(cx_y + 8.0, cx_y + h - 24.0);
+            let end_x = (cx_x + end.x as f64 + 14.0).clamp(cx_x + 8.0, cx_x + w - 112.0);
+            let end_y = (cx_y + end.y as f64 - 22.0).clamp(cx_y + 8.0, cx_y + h - 24.0);
+            self.set_view_abs(cx, ids!(start_marker_label_box), start_x, start_y);
+            self.set_view_abs(cx, ids!(end_marker_label_box), end_x, end_y);
+            self.set_view_abs(cx, ids!(place_label_1_box), cx_x + w * 0.18, cx_y + h * 0.20);
+            self.set_view_abs(cx, ids!(place_label_2_box), cx_x + w * 0.55, cx_y + h * 0.42);
+            self.set_view_abs(cx, ids!(place_label_3_box), cx_x + w * 0.20, cx_y + h * 0.62);
+            self.set_view_abs(cx, ids!(place_label_4_box), cx_x + w * 0.78, cx_y + h * 0.80);
         }
 
         self.refresh_top_bar(cx);
@@ -1518,6 +1637,14 @@ impl App {
             }
             track_view.redraw(cx);
         }
+    }
+
+    fn set_view_abs(&mut self, cx: &mut Cx, id: &[LiveId], x: f64, y: f64) {
+        let view = self.ui.view(cx, id);
+        if let Some(mut v) = view.borrow_mut() {
+            v.walk.abs_pos = Some(dvec2(x, y));
+        }
+        view.redraw(cx);
     }
 
     fn refresh_pause_glyph(&mut self, cx: &mut Cx) {
