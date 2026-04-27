@@ -903,6 +903,32 @@ impl Widget for TrackCanvas {
                     };
                     self.draw_halo.draw_abs(cx, halo_rect);
                 }
+
+                let big_marker_size: f64 = 18.0;
+                self.draw_start_marker.marker_color = vec3(0.063, 0.722, 0.506);
+                self.draw_start_marker.marker_radius = 7.0;
+                self.draw_start_marker.draw_abs(
+                    cx,
+                    Rect {
+                        pos: dvec2(
+                            geom.start_screen.x as f64 - big_marker_size * 0.5,
+                            geom.start_screen.y as f64 - big_marker_size * 0.5,
+                        ),
+                        size: dvec2(big_marker_size, big_marker_size),
+                    },
+                );
+                self.draw_end_marker.marker_color = vec3(0.961, 0.961, 0.980);
+                self.draw_end_marker.marker_radius = 7.0;
+                self.draw_end_marker.draw_abs(
+                    cx,
+                    Rect {
+                        pos: dvec2(
+                            geom.end_screen.x as f64 - big_marker_size * 0.5,
+                            geom.end_screen.y as f64 - big_marker_size * 0.5,
+                        ),
+                        size: dvec2(big_marker_size, big_marker_size),
+                    },
+                );
             }
         }
 
