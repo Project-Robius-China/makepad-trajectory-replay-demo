@@ -1390,10 +1390,18 @@ impl App {
             .label(cx, ids!(hud_cad_value))
             .set_text(cx, &cad_text);
 
-        set_bar_ratio(cx, &self.ui, ids!(hud_speed_bar), s_ratio);
-        set_bar_ratio(cx, &self.ui, ids!(hud_hr_bar), hr_ratio);
-        set_bar_ratio(cx, &self.ui, ids!(hud_ele_bar), ele_ratio);
-        set_bar_ratio(cx, &self.ui, ids!(hud_cad_bar), cad_ratio);
+        set_bar_ratio(
+            cx, &self.ui, ids!(hud_speed_bar), ids!(hud_speed_bar_fill), ids!(hud_speed_bar_rest), s_ratio,
+        );
+        set_bar_ratio(
+            cx, &self.ui, ids!(hud_hr_bar), ids!(hud_hr_bar_fill), ids!(hud_hr_bar_rest), hr_ratio,
+        );
+        set_bar_ratio(
+            cx, &self.ui, ids!(hud_ele_bar), ids!(hud_ele_bar_fill), ids!(hud_ele_bar_rest), ele_ratio,
+        );
+        set_bar_ratio(
+            cx, &self.ui, ids!(hud_cad_bar), ids!(hud_cad_bar_fill), ids!(hud_cad_bar_rest), cad_ratio,
+        );
     }
 
     fn refresh_scrubber_labels(&mut self, cx: &mut Cx, track: &Track) {
@@ -1407,6 +1415,17 @@ impl App {
         self.ui
             .label(cx, ids!(total_time_label))
             .set_text(cx, &tot);
+
+        let track_view = self.ui.view(cx, ids!(scrubber_track));
+        let total = track_view.area().rect(cx).size.x as f32 - 12.0;
+        if total > 1.0 {
+            let walked_w = (total * self.state.playback_progress.clamp(0.0, 1.0)) as f64;
+            let walked_ref = self.ui.view(cx, ids!(scrubber_walked));
+            if let Some(mut v) = walked_ref.borrow_mut() {
+                v.walk.width = Size::Fixed(walked_w);
+            }
+            track_view.redraw(cx);
+        }
     }
 
     fn fill_stats(&mut self, cx: &mut Cx, track: &Track) {
@@ -1429,10 +1448,30 @@ impl App {
     }
 }
 
-fn set_bar_ratio(cx: &mut Cx, ui: &WidgetRef, id: &[LiveId], ratio: f32) {
-    let v = ui.view(cx, id);
-    let _ = ratio;
-    v.redraw(cx);
+fn set_bar_ratio(
+    cx: &mut Cx,
+    ui: &WidgetRef,
+    parent_id: &[LiveId],
+    fill_id: &[LiveId],
+    rest_id: &[LiveId],
+    ratio: f32,
+) {
+    let parent = ui.view(cx, parent_id);
+    let total = parent.area().rect(cx).size.x as f32;
+    if total < 1.0 {
+        return;
+    }
+    let fill_w = (total * ratio.clamp(0.0, 1.0)) as f64;
+    let rest_w = (total as f64 - fill_w).max(0.0);
+    let fill_ref = ui.view(cx, fill_id);
+    if let Some(mut v) = fill_ref.borrow_mut() {
+        v.walk.width = Size::Fixed(fill_w);
+    }
+    let rest_ref = ui.view(cx, rest_id);
+    if let Some(mut v) = rest_ref.borrow_mut() {
+        v.walk.width = Size::Fixed(rest_w);
+    }
+    parent.redraw(cx);
 }
 
 fn format_mmss(total_secs: i64) -> String {
