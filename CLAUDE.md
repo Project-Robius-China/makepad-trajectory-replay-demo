@@ -14,7 +14,7 @@
 
 - `design/refs/storyboard-1.png` — S0 同步 / S1 path-draw / S3 Guard / S4 stats 4 屏拼图
 - `design/refs/storyboard-2.png` — S2 主回放 / S3 Guard / S4 stats 3 屏拼图
-- `design/auto/` — 跑 demo 时 `makepad-screenshot` skill 自动落盘的截图, 不入 git
+- `design/auto/` — 跑 demo 时 `screenshot` skill 工作流落盘的截图 (raw + 800w 降采样版本), 不入 git
 
 ## 实现使用的 skill 清单
 
@@ -45,28 +45,31 @@
 |---|---|---|
 | `xor-shader-techniques` | 7 类 shader 技法: Turbulence / Efficient Chaos / Dot Noise / Fractal Texturing / fwidth Outlines / Volumetric Raymarching / Analytic Anti-Aliasing | ★★★ 必读 (轨迹 SDF / glow / bloom / 抗锯齿全部命中) |
 
-### 截图自动调试 (来自 ZhangHanDong/makepad-component 1 个)
+### 截图调试 (通用 OS 截图 skill)
 
 | skill | 用途 | 必要性 |
 |---|---|---|
-| `makepad-screenshot` | 自动 `ps aux 找进程 → osascript 置顶 → screencapture -x → Read 工具读 PNG → 对照 visual.spec.md 22 条 BDD` 闭环 | ★★★ 必读 (一天工时内做 5-10 轮视觉迭代靠它) |
+| `screenshot` | 跨平台桌面截图 helper (Python/PowerShell), 支持 `--app` / `--window-id` / `--region` / `--mode temp`, 输出原始 PNG | ★★★ 必读 (一天工时内做 5-10 轮视觉迭代靠它) |
+
+> ⚠️ 注意: `screenshot` skill **本身不做置顶 + 降采样**, 这两步必须由 cc 在调用 helper 前后手动完成 (见下方"截图尺寸约束"和"截图工作流模板")。否则要么截到 IDE / Finder, 要么 Read 原图爆 context。
 
 ## skill 触发约定
 
-- `/screenshot` 或中文 "截图" / "看看 UI" / "查看界面" → 调用 `makepad-screenshot`
-- `/run-and-capture <package>` → 调用 `makepad-screenshot` 完整 build + run + capture 流程
+- 中文 "截图" / "看看 UI" / "查看界面" / `/screenshot` → 调用 `screenshot` skill 的 `take_screenshot.py`, 套用本文档下方 "截图工作流模板" (osascript 置顶 → 截图 → sips 降采样 → Read)
 - 遇到 shader 编写需求 → 优先读 `xor-shader-techniques` + `makepad-2.0-shaders`
 - 遇到 widget 拼装需求 → 读 `makepad-2.0-widgets` + `makepad-2.0-layout`
 
 ## macOS 权限前置
 
-`makepad-screenshot` skill 实际跑起来需要 3 个 macOS 系统权限:
+`screenshot` skill (以及手动 `osascript` 置顶) 跑起来需要 3 个 macOS 系统权限:
 
 | 权限 | 触发命令 | 在哪批 | 当前状态 |
 |---|---|---|---|
-| 屏幕录制 | `screencapture -x` | 系统设置 → 隐私与安全性 → 屏幕录制 | ✅ 已授权 (2026-04-27 验证通过, 实测 1.0M PNG 落盘) |
+| 屏幕录制 | `screencapture -x` / `take_screenshot.py` | 系统设置 → 隐私与安全性 → 屏幕录制 | ✅ 已授权 (2026-04-27 验证通过, 实测 1.0M PNG 落盘) |
 | 自动化 (Apple Events) | `osascript ... tell System Events` | 系统设置 → 隐私与安全性 → 自动化 | ✅ 已授权 (实测可读 process name) |
 | 辅助功能 | 同上, 部分 osascript 需要 | 系统设置 → 隐私与安全性 → 辅助功能 | ✅ 默认通过 |
+
+> 一次性预检 (新 skill 自带): `bash .claude/skills/screenshot/scripts/ensure_macos_permissions.sh` — 一次性请求屏幕录制权限。
 
 ## 截图尺寸约束 (硬性, 防 context 爆炸)
 
@@ -83,6 +86,8 @@ sips -Z 800 -s formatOptions 70 input.png --out output_800w.png
 
 ### 截图工作流模板 (cc 必须按此顺序)
 
+新 `screenshot` skill **不做**置顶和降采样, 所以这两步要在调用 helper 前后手动加。
+
 ```bash
 SCRATCHPAD="/Users/zhaoyue/workspace/matrix/mobile_example/design/auto"
 RAW="$SCRATCHPAD/raw_$(date +%H%M%S).png"
@@ -95,10 +100,31 @@ APP_NAME="mobile_example"   # ← 按当前 demo 二进制名改
 osascript -e "tell application \"System Events\" to set frontmost of (first process whose name contains \"$APP_NAME\") to true"
 sleep 0.3   # 给窗口提前一帧时间, 不然偶尔会截到过渡态
 
-# 2. 截图原图 (-x 静默, 无快门音)
+# 2. 截图 — 默认走原生 screencapture (-x 静默, 无快门音, 不依赖 swift toolchain)
 screencapture -x "$RAW"
 
-# 3. 立即降采样
+# 可选增强 (要求 macOS Swift toolchain 能跑通, 否则跳过):
+#   python3 .claude/skills/screenshot/scripts/take_screenshot.py --app "$APP_NAME" --path "$RAW"
+# 优势: 直接抓单窗口 (不用截全屏后裁剪), 多显示器分文件落盘, 错误信息更友好。
+# 如果 helper 报 swiftc / "Swift toolchain mismatch" 错误, 不要花轮次诊断, 直接用上面的 screencapture -x。
+# 一次性修法 (不阻塞当前任务): sudo rm -rf /Library/Developer/CommandLineTools && sudo xcode-select --install
+#
+# 多窗口陷阱: --app 命中 N 个窗口时, helper 会输出 N 个 "${RAW%.png}-w<id>.png" 文件,
+# 而 $RAW 本身**不存在**, 后面 sips "$RAW" 会报"找不到文件"。两种处置:
+#   (a) 锁主窗口 — 先 list-windows 选面积最大的那条 ID, 再用 --window-id 单窗截:
+#       WIN_ID=$(python3 .claude/skills/screenshot/scripts/take_screenshot.py \
+#                 --list-windows --app "$APP_NAME" 2>&1 \
+#                 | awk '{ split($4, a, "[x+-]"); print a[1]*a[2], $1 }' \
+#                 | sort -rn | head -1 | awk '{print $2}')
+#       [ -z "$WIN_ID" ] && { echo "❌ ABORT: $APP_NAME 窗口不存在, 别盲截"; exit 1; }
+#       python3 .claude/skills/screenshot/scripts/take_screenshot.py --window-id "$WIN_ID" --path "$RAW"
+#   (b) 全抓后挑 — 截多张, 用 ls -S 取面积/字节最大的:
+#       python3 .claude/skills/screenshot/scripts/take_screenshot.py --app "$APP_NAME" --path "$RAW"
+#       RAW=$(ls -S "${RAW%.png}"-w*.png 2>/dev/null | head -1)
+#       [ -z "$RAW" ] && { echo "❌ ABORT: 没有窗口被捕获"; exit 1; }
+# 推荐用 (a), 因为它在 demo 没起来时**直接报错**, 不会偷偷退化截桌面。
+
+# 3. 立即降采样 — 强制! Read 原图必爆 context
 sips -Z 800 -s formatOptions 70 "$RAW" --out "$SMALL"
 
 # 4. 删除原图 (省磁盘 + 防误 Read)
@@ -114,13 +140,14 @@ rm "$RAW"
 
 ## skill 来源 worktree
 
-- makepad-component 的 skill 通过 `git worktree` 拉到 `~/.claude/skills-source/makepad-component-zhanghandong` (pinned to `zhanghandong/main`)
+- `xor-shader-techniques` 通过 `git worktree` 拉到 `~/.claude/skills-source/makepad-component-zhanghandong` (pinned to `zhanghandong/main`)
 - 更新方法: `git -C ~/.claude/skills-source/makepad-component-zhanghandong fetch zhanghandong main && git -C ~/.claude/skills-source/makepad-component-zhanghandong checkout zhanghandong/main`
 - makepad-skills 的 14 个 skill 直接软链自 marketplace cache (`~/.claude/plugins/marketplaces/makepad-skills/skills/`)
+- `screenshot` skill 是项目本地真目录 (`.claude/skills/screenshot/`), helper 脚本软链到 `~/.codex/vendor_imports/skills/skills/.curated/screenshot/scripts/` (codex 共享 skill, 跨平台桌面截图)
 
 ## 工作流推荐
 
 1. **理解阶段** — 读 prd.md + visual.spec.md + spec.spec.md, 确认契约
 2. **实现阶段** — 按 skill 必要性 ★★★ 顺序读 SKILL.md, 然后写代码
-3. **验收阶段** — 跑 `/run-and-capture` 截图, Read 截图, 对照 visual.spec.md 22 条 BDD 自审
+3. **验收阶段** — 按 "截图工作流模板" 跑一遍 (osascript 置顶 → `take_screenshot.py` → sips 降采样 → Read), 对照 visual.spec.md 22 条 BDD 自审
 4. **迭代阶段** — diff 出来后调 shader uniform 或 token, 重跑 → 重截 → 再对照

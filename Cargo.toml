@@ -1,0 +1,15 @@
+[package]
+name = "mobile_example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+makepad-widgets = { git = "https://github.com/kevinaboos/makepad", branch = "cargo_makepad_ndk_fix", features = ["serde"] }
+quick-xml = { version = "0.31", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", default-features = false, features = ["tls", "rustls"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

@@ -52,12 +52,7 @@
 每完成一屏立刻跑这个闭环:
 
 1. `cargo run` 等价命令把 demo 跑起来
-2. 严格按 `CLAUDE.md` "截图工作流模板" 的 5 步走:
-   1. **osascript 把 makepad 窗口提到最前** (这一步漏了截到的就是 IDE, 自审作废)
-   2. `screencapture -x` 截原图到 `design/auto/raw_<HHMMSS>.png`
-   3. `sips -Z 800 -s formatOptions 70` 降采样到 `_800w.png`
-   4. `rm` 原图
-   5. `Read` 降采样版本
+2. **严格照搬 `CLAUDE.md` "截图工作流模板"** 的所有步骤 (osascript 置顶 → 调 `screenshot` skill 的 `take_screenshot.py` 或 fallback 到 `screencapture -x` → `sips -Z 800` 降采样 → 删原图 → Read 800w 版)。模板是唯一真相, 不要在这里重复或改写步骤 — 以 `CLAUDE.md` 当前内容为准
 3. 对照 `visual.spec.md` 该屏所有 BDD 逐条写一行:
 
    ```
