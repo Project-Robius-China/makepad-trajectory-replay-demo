@@ -5,14 +5,14 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 
 ## 意图
 
-为 Project-Robius-China community review 准备一个 Makepad Android 轨迹回放 demo 的实现合约。首版运行体验为 cycling 默认回放，但数据与回放层必须按通用 trajectory replay engine 设计，能够从 `Project-Robius-China/trajectory-replay-data` 读取 manifest 和默认数据。本文档只约束后续实现，不要求本轮写代码。
+为 Project-Robius-China community review 准备一个 Makepad Android 轨迹回放 demo 的实现合约。首版运行体验为 cycling 默认回放，但数据与回放层必须按通用 trajectory replay engine 设计，能够通过 GitHub API 从 `Project-Robius-China/trajectory-replay-data` 读取 manifest 和默认数据，并为运动、旅行、飞行轨迹保留统一归一化模型。本文档只约束后续实现，不要求本轮写代码。
 
 ## 决策
 
 ### Scope
 
 - 项目定位: 开源工程 demo，不写投资人话术，不做商业 landing page。
-- Engine scope: 通用 trajectory replay engine，支持 `cycling`、`running`、`hiking`、`walking`、`transit` 五类 profile 的 manifest 与归一化。
+- Engine scope: 通用 trajectory replay engine，支持 `cycling`、`running`、`hiking`、`walking`、`transit`、`travel`、`flight` 七类 profile 的 manifest 与归一化。
 - Renderer scope: 首版渲染层只实现 `cycling` 默认 profile，不提供运动类型切换 UI。
 - 提交目标: `Project-Robius-China` 组织，PR 面向 community review。
 - 本轮交付: 只改 `prd.md` 与 `spec.spec`，不写 Cargo 项目、不添加源码、不下载数据文件。
@@ -22,7 +22,8 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 - 数据仓库: `https://github.com/Project-Robius-China/trajectory-replay-data`
 - 默认数据集: `cycling/bikeride.gpx`
 - bundled fallback: `assets/cycling-track.gpx`
-- 联网范围: 只允许访问 trajectory-replay-data 的 GitHub Raw URL；禁止访问 Strava、Garmin、Komoot、Mapbox、OSM live tiles、LLM API、analytics、telemetry。
+- 联网范围: 只允许访问 GitHub REST Contents API、GitHub Raw download_url 和 trajectory-replay-data 仓库内容；禁止访问 Strava、Garmin、Komoot、Mapbox、OSM live tiles、实时航班 API、LLM API、analytics、telemetry。
+- 数据获取: manifest 通过 `GET /repos/Project-Robius-China/trajectory-replay-data/contents/manifest.json?ref=main` 获取；默认数据通过 Contents API 的 `content`、`download_url` 或 `Accept: application/vnd.github.raw+json` 获取。
 - GPX 解析: `quick-xml = "0.31"` + `serde` derive；禁止 `georust/gpx` 与 `serde-xml-rs`。
 - TrackPointExtension: 按 namespace URI 解析，支持 Garmin v1 与 v2，不按 prefix 解析。
 - 字段稀疏: 文件级 `hr` 必须存在；逐点缺 `hr` 或 `cad` 时使用 `None`/破折号显示，不 panic。
@@ -42,13 +43,13 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 
 ### 联网层
 
-- 启动时后台线程对 trajectory-replay-data 默认数据 URL 发 HTTP GET，3 秒总超时。
+- 启动时后台线程对 GitHub Contents API 发 HTTP GET，先取 manifest，再取 trajectory-replay-data 默认数据，3 秒总超时。
 - HTTP client: `ureq = "2"`，`default-features = false`，启用 rustls ring backend。
 - 并发模型: `std::thread::spawn` worker + `std::sync::mpsc` 回主线程。
 - 禁止引入 `tokio`、`reqwest`、`async-std`、`aws-lc-rs`。
 - `NetworkState`: `Idle -> Fetching -> Success` 或 `Idle -> Fetching -> Fallback`。
 - `Fallback` 是终态；fetch 失败后不重试。
-- 不持久化 fetch 到的 GPX 或 manifest cache。
+- 不持久化 fetch 到的 GPX、CSV、GeoJSON 或 manifest cache。
 
 ### Contract Guard
 
@@ -81,7 +82,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 - 不得引入 `georust/gpx`、`serde-xml-rs`
 - 不得引入或通过依赖树拉入 `aws-lc-rs`
 - 不得调用 Anthropic、OpenAI 或任何真实 LLM API
-- 不得调用 Strava、Garmin Connect、Komoot、Mapbox、OSM live tile 或 Google Maps API
+- 不得调用 Strava、Garmin Connect、Komoot、Mapbox、OSM live tile、Google Maps 或实时航班 API
 - 不得调用 `robius-location` 的 location API
 - 不得实现账号、登录、注册、OAuth、分享、社交、排行榜
 - 不得把 fetch 到的数据写入磁盘 cache
@@ -106,14 +107,14 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   测试: test_network_fetch_success_full_playback
   层级: integration
   替身: 真实 Android 设备 + 真实网络
-  假设 Android 设备网络畅通且能访问 raw.githubusercontent.com 上的 trajectory-replay-data 默认数据
+  假设 Android 设备网络畅通且能访问 api.github.com 与 raw.githubusercontent.com 上的 trajectory-replay-data 默认数据
   并且 包内 bundled assets/cycling-track.gpx 文件存在作为 fallback
   当 用户启动 app 并放任 playback_progress 自动从 0 走到 1
-  那么 app 在启动后 3 秒内成功 fetch 默认 cycling 数据并完成 parse
+  那么 app 在启动后 3 秒内通过 GitHub API 成功 fetch manifest 与默认 cycling 数据并完成 parse
   并且 PlaybackState.data_source 等于 Network
   并且 PlaybackState.network_state 经历 Idle 然后 Fetching 然后 Success 三个状态
   并且 UI 在 Success 期间至少 800 毫秒显示包含 "已同步" 的文字
-  并且 app 在整个 90 秒内不访问 trajectory-replay-data 之外的任何主机
+  并且 app 在整个 90 秒内不访问 api.github.com 与 raw.githubusercontent.com 之外的任何主机
   并且 整个回放过程不出现 panic 或 crash
   并且 平均帧率不低于 50 fps
 
@@ -128,7 +129,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   并且 PlaybackState.data_source 等于 LocalFallback
   并且 PlaybackState.network_state 经历 Idle 然后 Fetching 然后 Fallback 三个状态
   并且 UI 在 Fallback 期间持续显示包含 "本地缓存" 的文字
-  并且 app 在整个 90 秒内不访问 trajectory-replay-data 之外的任何主机
+  并且 app 在整个 90 秒内不访问 api.github.com 与 raw.githubusercontent.com 之外的任何主机
   并且 fetch 失败后 app 不发起任何重试请求
   并且 整个回放过程不出现 panic 或 crash
   并且 平均帧率不低于 50 fps
@@ -157,11 +158,11 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   并且 输出文本不包含字符串 "async-std"
   并且 输出文本不包含字符串 "aws-lc-rs"
 
-场景: HTTP fetch 在后台线程发起且不阻塞主循环
-  测试: test_http_fetch_off_main_thread
+场景: GitHub API fetch 在后台线程发起且不阻塞主循环
+  测试: test_github_api_fetch_off_main_thread
   层级: integration
   替身: fetch worker 入口插桩记录线程 ID
-  假设 app 已启动并触发默认数据 fetch
+  假设 app 已启动并触发 GitHub API manifest fetch
   当 fetch worker 执行 ureq HTTP GET 调用
   那么 执行 ureq HTTP GET 的线程 ID 不等于 Makepad 主循环线程 ID
   并且 fetch 期间 Makepad 主循环帧率不低于 50 fps
@@ -305,22 +306,28 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 场景: trajectory-replay-data manifest 指定 cycling 默认数据
   测试: test_manifest_selects_cycling_default_dataset
   层级: integration
-  替身: mock GitHub Raw manifest response
-  假设 数据 repo 返回 manifest.json
+  替身: mock GitHub Contents API manifest response
+  假设 GitHub Contents API 返回 manifest.json
   当 app 启动并读取 manifest
   那么 manifest.default_profile 等于 "cycling"
   并且 manifest.default_dataset 等于 "cycling/bikeride.gpx"
   并且 manifest 来源 URL 以 "https://github.com/Project-Robius-China/trajectory-replay-data" 为仓库源
   并且 默认数据 URL 的仓库路径属于 "Project-Robius-China/trajectory-replay-data"
+  并且 GitHub Contents API 响应包含字段 name path sha size content download_url
+  并且 数据层从 content 字段或 download_url 取得 manifest 内容
+  并且 默认数据请求使用 Contents API raw media type 或 fresh download_url
+  并且 任何 403 404 rate limit timeout 均切换到 LocalFallback
   并且 fetch 逻辑不回退到 gpx-animator 原始仓库 URL 作为主路径
 
 场景: 多类型轨迹数据层归一化但渲染层只消费 cycling
   测试: test_multi_profile_data_layer_renderer_cycling_only
   假设 默认 active_profile 为 "cycling"
-  并且 manifest 中声明 profile 为 cycling running hiking walking transit 的 5 个数据集
+  并且 manifest 中声明 profile 为 cycling running hiking walking transit travel flight 的 7 个数据集
   当 数据层加载 manifest 并构建 profile registry
-  那么 profile registry 包含 cycling running hiking walking transit
+  那么 profile registry 包含 cycling running hiking walking transit travel flight
   并且 每个 profile 都映射到统一 TrajectoryPoint 字段集合
+  并且 flight profile 允许 altitude_m heading_deg route_label 字段为空或有值
+  并且 travel profile 允许 transport_mode route_label 字段为空或有值
   并且 renderer 当前 active_profile 固定为 cycling
   并且 UI 不显示运动类型切换控件
 
