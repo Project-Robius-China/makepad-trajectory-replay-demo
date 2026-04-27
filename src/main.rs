@@ -1569,6 +1569,8 @@ impl App {
                     self.fill_stats(cx, &track);
                 }
                 self.ui.view(cx, ids!(stats_overlay)).set_visible(cx, true);
+                self.ui.view(cx, ids!(label_overlay)).set_visible(cx, false);
+                self.ui.view(cx, ids!(right_overlay)).set_visible(cx, false);
             }
             _ => {}
         }
