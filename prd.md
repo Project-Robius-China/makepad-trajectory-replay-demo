@@ -11,7 +11,7 @@
 
 本 PRD 定义一个 Makepad Android demo：用真实轨迹数据驱动 GPU-first 的数据艺术回放界面，展示 Makepad 在移动端自定义渲染、显式状态管理、后台数据加载和 agent-spec 约束层上的组合能力。
 
-这不是一个完整骑行 App，也不是商业路演页面。它是一个开源工程 demo，提交目标是 Project-Robius-China 组织，由 community review 评估需求清晰度、边界、实现风险和后续可维护性。文档语气应以工程事实为主，避免投资人腔、夸张竞品攻击和不可验证的效果承诺。
+这不是一个完整骑行 App。它是一个开源工程 demo，提交目标是 Project-Robius-China 组织，由 community review 评估需求清晰度、边界、实现风险和后续可维护性。文档语气应以工程事实为主，避免营销话术、夸张竞品攻击和不可验证的效果承诺。
 
 第一版渲染层只实现 cycling 默认体验；数据层从一开始按多类型轨迹设计。也就是说：engine 能通过 GitHub API 从集中数据仓库读取 manifest 和数据文件，归一化运动 / 旅行 / 飞行轨迹，renderer 当前只消费 cycling profile。这个边界能避免把 demo 做成封闭的一次性样品，同时控制首版实现复杂度。
 

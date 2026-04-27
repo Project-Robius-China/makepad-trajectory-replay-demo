@@ -11,7 +11,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 
 ### Scope
 
-- 项目定位: 开源工程 demo，不写投资人话术，不做商业 landing page。
+- 项目定位: 开源工程 demo，保持工程描述风格，不做商业 landing page。
 - Engine scope: 通用 trajectory replay engine，支持 `cycling`、`running`、`hiking`、`walking`、`transit`、`travel`、`flight` 七类 profile 的 manifest 与归一化。
 - Renderer scope: 首版渲染层只实现 `cycling` 默认 profile，不提供运动类型切换 UI。
 - 提交目标: `Project-Robius-China` 组织，PR 面向 community review。

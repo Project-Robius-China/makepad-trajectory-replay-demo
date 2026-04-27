@@ -18,7 +18,7 @@
 
 ## 任务
 
-在当前仓库 `/Users/zhaoyue/workspace/matrix/mobile_example` 用 Makepad 2.0 实现一个 Android 端骑行轨迹回放 demo, 交付目标是 **2026-04-29 投资人路演现场可跑通**。
+在当前仓库 `/Users/zhaoyue/workspace/matrix/mobile_example` 用 Makepad 2.0 实现一个 Android 端骑行轨迹回放 demo, 交付目标是 **Project-Robius-China 社区 review 时可现场跑通的开源示例**。
 
 最终验收 = `visual.spec.md` 22 条 BDD + `spec.spec.md` 34 条 BDD 全部通过自审 (允许少量 BLOCKED, 见 [完成条件](#完成条件))。
 
