@@ -2,6 +2,7 @@ pub use makepad_widgets;
 
 use makepad_widgets::*;
 
+mod map;
 mod network;
 mod parser;
 mod state;
@@ -9,6 +10,7 @@ mod state;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
+use crate::map::GeoMapView;
 use crate::network::{spawn_fetch_worker, FetchResult};
 use crate::parser::parse_gpx;
 use crate::state::{
@@ -413,6 +415,8 @@ script_mod! {
             return Pal.premul(vec4(rgb.x, rgb.y, rgb.z, alpha))
         }
     }
+
+    let GeoMapViewBase = #(GeoMapView::register_widget(vm))
 
     let TrackCanvasBase = #(TrackCanvas::register_widget(vm))
     let TrackCanvas = set_type_default() do TrackCanvasBase{
