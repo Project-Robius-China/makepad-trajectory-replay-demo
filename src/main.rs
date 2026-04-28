@@ -10,7 +10,7 @@ mod state;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
-use crate::map::GeoMapView;
+use crate::map::{DrawMapMarker, DrawMapTile, GeoMapView};
 use crate::network::{spawn_fetch_worker, FetchResult};
 use crate::parser::parse_gpx;
 use crate::state::{
@@ -413,6 +413,52 @@ script_mod! {
             let alpha = clamp((core * 1.0 + halo * 0.68) * self.particle_alpha * twinkle, 0.0, 1.0)
             let rgb = self.particle_color * (core * 1.70 + halo * 1.05) * twinkle
             return Pal.premul(vec4(rgb.x, rgb.y, rgb.z, alpha))
+        }
+    }
+
+    set_type_default() do #(DrawMapTile::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        tile_texture: texture_2d(float)
+        has_texture: 0.0
+        uv_offset: vec2(0.0, 0.0)
+        uv_scale: vec2(1.0, 1.0)
+
+        pixel: fn() {
+            if self.has_texture > 0.5 {
+                let uv = self.uv_offset + self.pos * self.uv_scale
+                return self.tile_texture.sample(uv)
+            }
+            return vec4(0.95, 0.95, 0.95, 1.0)
+        }
+    }
+
+    set_type_default() do #(DrawMapMarker::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        marker_color: vec4(1.0, 0.2, 0.2, 1.0)
+
+        pixel: fn() {
+            // Anchor at bottom point (the pin tip)
+            let p = self.pos - vec2(0.5, 0.7)
+
+            // Teardrop: circle on top, point at bottom
+            let circle_center = vec2(0.0, 0.0)
+            let circle_radius = 0.3
+
+            // Distance to circle
+            let d_circle = length(p - circle_center) - circle_radius
+
+            // Triangle/cone pointing down
+            let tip = vec2(0.0, 0.35)
+            let d_cone = dot(p - tip, normalize(vec2(abs(p.x), -0.5)))
+
+            // Combine: inside if either shape
+            let d = min(d_circle, d_cone)
+
+            if d < 0.0 {
+                let highlight = smoothstep(0.0, -0.15, d_circle - 0.1)
+                return mix(self.marker_color, vec4(1.0, 1.0, 1.0, 1.0), highlight * 0.3)
+            }
+            return vec4(0.0, 0.0, 0.0, 0.0)
         }
     }
 

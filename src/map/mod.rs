@@ -6,4 +6,4 @@ pub mod disk_cache;
 pub mod tiles;
 pub mod map_view;
 
-pub use map_view::GeoMapView;
+pub use map_view::{DrawMapMarker, DrawMapTile, GeoMapView};
