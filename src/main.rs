@@ -792,27 +792,33 @@ script_mod! {
                             draw_text.text_style.font_size: 11
                         }
 
+                        // scrubber_track outer 48dp 高 (hit area, P11 全控件 ≥48dp) + inner 18dp 视觉
                         scrubber_track := View{
-                            width: Fill height: 18
-                            flow: Right
+                            width: Fill height: 48
                             align: Align{ y: 0.5 }
-                            scrubber_walked := RoundedView{
-                                width: 0 height: 2
-                                new_batch: true
-                                draw_bg.color: #xF5F5FA
-                                draw_bg.radius: 1.
-                            }
-                            scrubber_thumb := RoundedView{
-                                width: 12 height: 12
-                                new_batch: true
-                                draw_bg.color: #xF5F5FA
-                                draw_bg.radius: 6.
-                            }
-                            scrubber_unwalked := RoundedView{
-                                width: Fill height: 2
-                                new_batch: true
-                                draw_bg.color: #x3B3B46
-                                draw_bg.radius: 1.
+                            new_batch: true
+                            scrubber_track_visual := View{
+                                width: Fill height: 18
+                                flow: Right
+                                align: Align{ y: 0.5 }
+                                scrubber_walked := RoundedView{
+                                    width: 0 height: 2
+                                    new_batch: true
+                                    draw_bg.color: #xF5F5FA
+                                    draw_bg.radius: 1.
+                                }
+                                scrubber_thumb := RoundedView{
+                                    width: 12 height: 12
+                                    new_batch: true
+                                    draw_bg.color: #xF5F5FA
+                                    draw_bg.radius: 6.
+                                }
+                                scrubber_unwalked := RoundedView{
+                                    width: Fill height: 2
+                                    new_batch: true
+                                    draw_bg.color: #x3B3B46
+                                    draw_bg.radius: 1.
+                                }
                             }
                         }
 
@@ -822,66 +828,88 @@ script_mod! {
                             draw_text.text_style.font_size: 11
                         }
 
-                        speed_1x_button := RoundedView{
-                            width: 36 height: 28
+                        // speed_1x/4x/16x_button: outer 48x48 hit area + inner 36x28 视觉 RoundedView
+                        speed_1x_button := View{
+                            width: 48 height: 48
                             align: Center
                             new_batch: true
-                            draw_bg.color: #x14141C
-                            draw_bg.radius: 8.
-                            speed_1x_label := Label{
-                                text: "1x"
-                                draw_text.color: #xCCCCDD
-                                draw_text.text_style.font_size: 12
-                            }
-                        }
-                        speed_4x_button := RoundedView{
-                            width: 36 height: 28
-                            align: Center
-                            new_batch: true
-                            draw_bg.color: #x4A60D9
-                            draw_bg.radius: 8.
-                            speed_4x_label := Label{
-                                text: "4x"
-                                draw_text.color: #xFFFFFF
-                                draw_text.text_style.font_size: 12
-                            }
-                        }
-                        speed_16x_button := RoundedView{
-                            width: 36 height: 28
-                            align: Center
-                            new_batch: true
-                            draw_bg.color: #x14141C
-                            draw_bg.radius: 8.
-                            speed_16x_label := Label{
-                                text: "16x"
-                                draw_text.color: #xCCCCDD
-                                draw_text.text_style.font_size: 12
-                            }
-                        }
-                        pause_button := RoundedView{
-                            width: 40 height: 40
-                            align: Center
-                            flow: Right
-                            spacing: 5
-                            new_batch: true
-                            draw_bg.color: #x1F1F2C
-                            draw_bg.radius: 20.
-                            pause_left_bar := RoundedView{
-                                width: 4 height: 14
+                            speed_1x_visual := RoundedView{
+                                width: 36 height: 28
+                                align: Center
                                 new_batch: true
-                                draw_bg.color: #xF5F5FA
-                                draw_bg.radius: 1.
+                                draw_bg.color: #x14141C
+                                draw_bg.radius: 8.
+                                speed_1x_label := Label{
+                                    text: "1x"
+                                    draw_text.color: #xCCCCDD
+                                    draw_text.text_style.font_size: 12
+                                }
                             }
-                            pause_right_bar := RoundedView{
-                                width: 4 height: 14
+                        }
+                        speed_4x_button := View{
+                            width: 48 height: 48
+                            align: Center
+                            new_batch: true
+                            speed_4x_visual := RoundedView{
+                                width: 36 height: 28
+                                align: Center
                                 new_batch: true
-                                draw_bg.color: #xF5F5FA
-                                draw_bg.radius: 1.
+                                draw_bg.color: #x4A60D9
+                                draw_bg.radius: 8.
+                                speed_4x_label := Label{
+                                    text: "4x"
+                                    draw_text.color: #xFFFFFF
+                                    draw_text.text_style.font_size: 12
+                                }
                             }
-                            pause_play_triangle := Label{
-                                text: ""
-                                draw_text.color: #xF5F5FA
-                                draw_text.text_style.font_size: 14
+                        }
+                        speed_16x_button := View{
+                            width: 48 height: 48
+                            align: Center
+                            new_batch: true
+                            speed_16x_visual := RoundedView{
+                                width: 36 height: 28
+                                align: Center
+                                new_batch: true
+                                draw_bg.color: #x14141C
+                                draw_bg.radius: 8.
+                                speed_16x_label := Label{
+                                    text: "16x"
+                                    draw_text.color: #xCCCCDD
+                                    draw_text.text_style.font_size: 12
+                                }
+                            }
+                        }
+                        // pause_button: outer 48x48 hit area + inner 40x40 视觉 RoundedView (含 ⏸ 字形 bars)
+                        pause_button := View{
+                            width: 48 height: 48
+                            align: Center
+                            new_batch: true
+                            pause_visual := RoundedView{
+                                width: 40 height: 40
+                                align: Center
+                                flow: Right
+                                spacing: 5
+                                new_batch: true
+                                draw_bg.color: #x1F1F2C
+                                draw_bg.radius: 20.
+                                pause_left_bar := RoundedView{
+                                    width: 4 height: 14
+                                    new_batch: true
+                                    draw_bg.color: #xF5F5FA
+                                    draw_bg.radius: 1.
+                                }
+                                pause_right_bar := RoundedView{
+                                    width: 4 height: 14
+                                    new_batch: true
+                                    draw_bg.color: #xF5F5FA
+                                    draw_bg.radius: 1.
+                                }
+                                pause_play_triangle := Label{
+                                    text: ""
+                                    draw_text.color: #xF5F5FA
+                                    draw_text.text_style.font_size: 14
+                                }
                             }
                         }
                     }
