@@ -191,6 +191,9 @@ MOBILE_EXAMPLE_DEMO_STAGE=S2 MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run
   - Manual test showed the pale map has strong separation but poor visual fit with the black replay UI. Pivot back to a dark map.
   - Do not return to the original all-black blend. Target a deep navy map base around `#08111A`, roads/features around `#303C50`, and a subtle cyan edge line so the map stage remains distinguishable from the app shell.
   - Restore S0 spinner and sync overlay text to light-on-dark colors.
+- 2026-04-28 resource migration alignment:
+  - Remote main migrated app assets from `assets/` to `resources/` for packaging. Move bundled map tiles to `resources/map_tiles/12/...` and update startup cache-copy code to read from `resources/map_tiles/12`.
+  - This keeps first-run/offline map behavior available in a fresh Android packaging environment without relying on the old `assets/` tree.
 
 **Existing demo env flags:**
 - `MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run` seeds replay progress for S2/S3/S4 data-linked stages.

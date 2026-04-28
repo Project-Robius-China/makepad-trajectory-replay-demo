@@ -3242,21 +3242,21 @@ impl MatchEvent for App {
     }
 }
 
-// P13.4: 启动期把 assets/map_tiles/ 里 bundled OSM dark tiles 拷贝到 disk_cache.
+// P13.4: 启动期把 resources/map_tiles/ 里 bundled OSM dark tiles 拷贝到 disk_cache.
 // demo 即使无网 / 全新设备 / cache 被清空 / community reviewer 第一次 clone repo 跑, 都能立刻
 // 看到地图 (而不需先跑 scripts/preload_tiles.sh). dev mode 用 CARGO_MANIFEST_DIR
-// (release distribution 必须 ship assets/ 一起).
+// (release distribution 必须 ship resources/ 一起).
 fn ensure_bundled_tiles_to_cache() {
-    let assets_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("assets/map_tiles/12");
-    if !assets_dir.exists() {
+    let resources_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources/map_tiles/12");
+    if !resources_dir.exists() {
         return;
     }
     let Some(cache_root) = crate::map::disk_cache::cache_dir() else {
         return;
     };
     let cache_dir = cache_root.join("tiles/12");
-    let Ok(x_entries) = std::fs::read_dir(&assets_dir) else {
+    let Ok(x_entries) = std::fs::read_dir(&resources_dir) else {
         return;
     };
     for x_entry in x_entries.flatten() {
