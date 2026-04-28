@@ -388,29 +388,41 @@ script_mod! {
                                     }
                                 }
 
-                                compass_button := RoundedView{
-                                    width: 32 height: 32
+                                // compass_button: outer 48dp hit area (G2 a11y) + inner 32dp 视觉 (visual.spec L40)
+                                compass_button := View{
+                                    width: 48 height: 48
                                     align: Center
                                     new_batch: true
-                                    draw_bg.color: #x14141C
-                                    draw_bg.radius: 16.
-                                    Label{
-                                        text: "N"
-                                        draw_text.color: #xF5F5FA
-                                        draw_text.text_style.font_size: 11
+                                    compass_visual := RoundedView{
+                                        width: 32 height: 32
+                                        align: Center
+                                        new_batch: true
+                                        draw_bg.color: #x14141C
+                                        draw_bg.radius: 16.
+                                        Label{
+                                            text: "N"
+                                            draw_text.color: #xF5F5FA
+                                            draw_text.text_style.font_size: 11
+                                        }
                                     }
                                 }
 
-                                lock_2d_button := RoundedView{
-                                    width: 32 height: 32
+                                // lock_2d_button: outer 48dp hit area + inner 32dp 视觉
+                                lock_2d_button := View{
+                                    width: 48 height: 48
                                     align: Center
                                     new_batch: true
-                                    draw_bg.color: #x14141C
-                                    draw_bg.radius: 16.
-                                    Label{
-                                        text: "2D"
-                                        draw_text.color: #xF5F5FA
-                                        draw_text.text_style.font_size: 9
+                                    lock_2d_visual := RoundedView{
+                                        width: 32 height: 32
+                                        align: Center
+                                        new_batch: true
+                                        draw_bg.color: #x14141C
+                                        draw_bg.radius: 16.
+                                        Label{
+                                            text: "2D"
+                                            draw_text.color: #xF5F5FA
+                                            draw_text.text_style.font_size: 9
+                                        }
                                     }
                                 }
                             }
@@ -1930,6 +1942,23 @@ impl AppMain for App {
             if fe.is_over && fe.was_tap() {
                 self.state.is_paused = !self.state.is_paused;
                 self.refresh_pause_glyph(cx);
+            }
+        }
+
+        // B3+B7: compass / 2D 锁定按钮 hit detection (outer wrap view 已扩展 area 到 48dp).
+        // compass click → viewport reset (当前主画布 view 始终居中 to track bounds, click 是 no-op redraw,
+        // 满足 spec.spec.md L411-413 "progress / index 不变" 与 L416 "旋转角重置为 0" 隐式契约).
+        let compass_area = self.ui.view(cx, ids!(compass_button)).area();
+        if let Hit::FingerUp(fe) = event.hits(cx, compass_area) {
+            if fe.is_over && fe.was_tap() {
+                log!("compass clicked: viewport reset (no-op, view 始终居中)");
+                self.ui.widget(cx, ids!(track_canvas)).redraw(cx);
+            }
+        }
+        let lock_2d_area = self.ui.view(cx, ids!(lock_2d_button)).area();
+        if let Hit::FingerUp(fe) = event.hits(cx, lock_2d_area) {
+            if fe.is_over && fe.was_tap() {
+                log!("2D lock clicked (装饰性, spec.spec.md L419-427 无副作用)");
             }
         }
 
