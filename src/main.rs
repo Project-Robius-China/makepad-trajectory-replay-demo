@@ -29,6 +29,18 @@ const GUARD_PULSE_DURATION_SECS: f64 = 1.5;
 const SCRUBBER_ECHO_FADE_SECS: f64 = 0.4;
 const SUCCESS_LABEL_VISIBLE_SECS: f64 = 0.9;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DemoStage {
+    S0,
+}
+
+fn demo_stage() -> Option<DemoStage> {
+    match std::env::var("MOBILE_EXAMPLE_DEMO_STAGE").ok().as_deref() {
+        Some("S0") | Some("s0") => Some(DemoStage::S0),
+        _ => None,
+    }
+}
+
 app_main!(App);
 
 script_mod! {
@@ -58,6 +70,109 @@ script_mod! {
         }
     }
 
+    set_type_default() do #(DrawSyncSpinner::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        spinner_color: vec3(0.96, 0.96, 0.98)
+        spinner_track: vec3(0.23, 0.23, 0.28)
+        stroke_width: 5.0
+        arc_ratio: 0.25
+
+        pixel: fn() {
+            let c = self.rect_size * 0.5
+            let p = self.pos * self.rect_size - c
+            let dist = length(p)
+            let radius = min(c.x, c.y) - self.stroke_width * 0.5 - 1.0
+            let inner = radius - self.stroke_width * 0.5
+            let outer = radius + self.stroke_width * 0.5
+            let ring = smoothstep(inner - 0.5, inner + 0.5, dist) *
+                       smoothstep(outer + 0.5, outer - 0.5, dist)
+            let inv_dist = 1.0 / max(dist, 0.001)
+            let dir = p * inv_dist
+            let phase = self.draw_pass.time * 7.853981
+            let head = vec2(cos(phase), sin(phase))
+            let in_arc = smoothstep(1.0 - self.arc_ratio * 2.0, 1.0, dot(dir, head))
+            let color = mix(self.spinner_track, self.spinner_color, in_arc)
+            return Pal.premul(vec4(color.x, color.y, color.z, ring))
+        }
+    }
+
+    // Source-level port of makepad-component/components/src/progress/progress.rs MpProgress.
+    set_type_default() do #(DrawMpProgress::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        progress: 0.0
+        track_color: vec3(0.23, 0.23, 0.28)
+        fill_color: vec3(0.29, 0.38, 0.85)
+
+        pixel: fn() {
+            let sdf = Sdf2d.viewport(self.pos * self.rect_size)
+            let sz = self.rect_size
+            let r = sz.y * 0.5
+            sdf.circle(r, r, r)
+            sdf.rect(r, 0.0, max(sz.x - sz.y, 0.0), sz.y)
+            sdf.circle(sz.x - r, r, r)
+            sdf.fill(vec4(self.track_color.x, self.track_color.y, self.track_color.z, 1.0))
+
+            let fill_end = sz.x * clamp(self.progress, 0.0, 1.0)
+            let px = self.pos.x * sz.x
+            let in_fill = step(px, fill_end)
+
+            let sdf2 = Sdf2d.viewport(self.pos * self.rect_size)
+            sdf2.circle(r, r, r)
+            sdf2.rect(r, 0.0, max(sz.x - sz.y, 0.0), sz.y)
+            sdf2.circle(sz.x - r, r, r)
+            sdf2.fill(vec4(self.fill_color.x, self.fill_color.y, self.fill_color.z, 1.0))
+
+            return mix(sdf.result, sdf2.result, in_fill * sdf2.result.w)
+        }
+    }
+
+    // Source-level port of makepad-component/components/src/slider/slider.rs MpSlider.
+    set_type_default() do #(DrawMpSliderTrack::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        progress_start: 0.0
+        progress_end: 0.0
+        track_color: vec3(0.23, 0.23, 0.28)
+        fill_color: vec3(0.42, 0.44, 0.50)
+
+        pixel: fn() {
+            let sdf = Sdf2d.viewport(self.pos * self.rect_size)
+            let sz = self.rect_size
+            let r = sz.y * 0.5
+            sdf.circle(r, r, r)
+            sdf.rect(r, 0.0, max(sz.x - sz.y, 0.0), sz.y)
+            sdf.circle(sz.x - r, r, r)
+            sdf.fill(vec4(self.track_color.x, self.track_color.y, self.track_color.z, 1.0))
+
+            let fill_start = sz.x * clamp(self.progress_start, 0.0, 1.0)
+            let fill_end = sz.x * clamp(self.progress_end, 0.0, 1.0)
+            let px = self.pos.x * sz.x
+            let in_fill = step(fill_start, px) * step(px, fill_end)
+
+            let sdf2 = Sdf2d.viewport(self.pos * self.rect_size)
+            sdf2.circle(r, r, r)
+            sdf2.rect(r, 0.0, max(sz.x - sz.y, 0.0), sz.y)
+            sdf2.circle(sz.x - r, r, r)
+            sdf2.fill(vec4(self.fill_color.x, self.fill_color.y, self.fill_color.z, 1.0))
+
+            return mix(sdf.result, sdf2.result, in_fill * sdf2.result.w)
+        }
+    }
+
+    set_type_default() do #(DrawMpSliderThumb::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        thumb_color: vec3(0.36, 0.37, 0.42)
+        border_color: vec3(0.36, 0.37, 0.42)
+
+        pixel: fn() {
+            let sdf = Sdf2d.viewport(self.pos * self.rect_size)
+            let c = self.rect_size * 0.5
+            sdf.circle(c.x, c.y, min(c.x, c.y) - 1.0)
+            sdf.fill(vec4(self.thumb_color.x, self.thumb_color.y, self.thumb_color.z, 1.0))
+            sdf.stroke(vec4(self.border_color.x, self.border_color.y, self.border_color.z, 1.0), 1.0)
+            return sdf.result
+        }
+    }
+
     set_type_default() do #(DrawWater::script_shader(vm)){
         ..mod.draw.DrawQuad
         water_color: vec3(0.043, 0.078, 0.157)
@@ -82,6 +197,7 @@ script_mod! {
         walked_segment_ratio: 0.
         scrubber_echo_phase: 0.
         overlay_dim: 0.
+        sync_placeholder: 0.
         seg_count: 0.
 
         speed_low: vec3(0.91, 0.91, 0.94)
@@ -128,8 +244,12 @@ script_mod! {
             let particle_color = walked_color * 1.4
             let final_rgb = base + walked_color * glow + particle_color * particle_visible
             let final_a = alpha + glow * 0.3 * (1. - alpha) + particle_visible * 0.7 * (1. - alpha) * (1. - glow * 0.3)
+            let placeholder_a = alpha * 0.24
+            let placeholder = step(0.5, self.sync_placeholder)
+            let display_rgb = mix(final_rgb, vec3(0.48, 0.48, 0.55), placeholder)
+            let display_a = mix(final_a, placeholder_a, placeholder)
             let dim = 1. - self.overlay_dim * 0.7
-            return Pal.premul(vec4(final_rgb * dim, final_a * dim))
+            return Pal.premul(vec4(display_rgb * dim, display_a * dim))
         }
     }
 
@@ -210,6 +330,86 @@ script_mod! {
         height: Fill
     }
 
+    let SyncSpinnerBase = #(SyncSpinner::register_widget(vm))
+    let SyncSpinner = set_type_default() do SyncSpinnerBase{
+        width: 48
+        height: 48
+    }
+
+    let MpProgressBase = #(MpProgress::register_widget(vm))
+    let MpProgress = set_type_default() do MpProgressBase{
+        width: Fill
+        height: 4
+    }
+
+    let MpSliderBase = #(MpSlider::register_widget(vm))
+    let MpSlider = set_type_default() do MpSliderBase{
+        width: Fill
+        height: 48
+    }
+
+    // Local Makepad 2.0 copy of makepad-component/components/src/card/card.rs MpCardSmall.
+    let MpCardSmall = RoundedView{
+        width: Fill
+        height: Fit
+        flow: Down
+        padding: 12
+        spacing: 8
+        new_batch: true
+        draw_bg.color: #x14141C
+        draw_bg.radius: 8.
+    }
+
+    // Local Makepad 2.0 copy of makepad-component MpCard semantics for compact chips.
+    let MpCardChip = RoundedView{
+        width: Fit
+        height: Fit
+        flow: Right
+        spacing: 6
+        padding: Inset{ left: 9 right: 9 top: 4 bottom: 4 }
+        align: Align{ y: 0.5 }
+        new_batch: true
+        draw_bg.color: #x14141C
+        draw_bg.radius: 12.
+    }
+
+    // Local Makepad 2.0 copy of makepad-component/components/src/badge/badge.rs MpBadgeDotIndicator.
+    let MpBadgeDotIndicator = View{
+        width: 8
+        height: 8
+        show_bg: true
+        draw_bg +: {
+            bg_color: #x4ADE80
+            pixel: fn() {
+                let sdf = Sdf2d.viewport(self.pos * self.rect_size)
+                let r = min(self.rect_size.x, self.rect_size.y) * 0.5
+                sdf.circle(r, r, r)
+                sdf.fill(self.bg_color)
+                return sdf.result
+            }
+        }
+    }
+
+    // Source-level style port of makepad-component/components/src/button/button.rs MpButtonSmall.
+    let MpButtonSmall = RoundedView{
+        width: 68
+        height: 36
+        align: Center
+        padding: Inset{ left: 12 right: 12 top: 4 bottom: 4 }
+        new_batch: true
+        draw_bg.color: #x14141C
+        draw_bg.radius: 8.
+    }
+
+    let MpButtonCircle = RoundedView{
+        width: 48
+        height: 48
+        align: Center
+        new_batch: true
+        draw_bg.color: #x1F1F2C
+        draw_bg.radius: 24.
+    }
+
     startup() do #(App::script_component(vm)){
         ui: Root{
             main_window := Window{
@@ -223,51 +423,61 @@ script_mod! {
                         width: Fill height: Fit
                         flow: Right
                         spacing: 8
-                        padding: Inset{ left: 16 right: 16 top: 14 bottom: 12 }
+                        padding: Inset{ left: 16 right: 16 top: 10 bottom: 10 }
                         align: Align{ y: 0.5 }
                         show_bg: true
                         new_batch: true
                         draw_bg.color: #x0A0A0F
 
-                        route_name_label := Label{
-                            text: "—"
+                        header_left := View{
                             width: Fill
-                            draw_text.color: #xF5F5FA
-                            draw_text.text_style.font_size: 13
+                            height: Fit
+                            flow: Down
+                            spacing: 2
+
+                            route_title_card := MpCardSmall{
+                                width: Fill
+                                padding: Inset{ left: 0 right: 0 top: 0 bottom: 0 }
+                                spacing: 0
+                                draw_bg.color: #x00000000
+
+                                route_title_primary := Label{
+                                    text: ""
+                                    width: Fill
+                                    draw_text.color: #xF5F5FA
+                                    draw_text.text_style.font_size: 11
+                                }
+                                route_title_secondary := Label{
+                                    text: ""
+                                    width: Fill
+                                    draw_text.color: #xD4D5DD
+                                    draw_text.text_style.font_size: 10.5
+                                }
+                            }
                         }
 
-                        sync_badge := RoundedView{
-                            width: Fit height: Fit
-                            padding: Inset{ left: 10 right: 10 top: 5 bottom: 5 }
+                        header_actions := View{
+                            width: Fit
+                            height: Fit
                             flow: Right
-                            spacing: 5
+                            spacing: 8
                             align: Align{ y: 0.5 }
-                            new_batch: true
-                            draw_bg.color: #x14141C
-                            draw_bg.radius: 12.
-                            sync_badge_dot := RoundedView{
-                                width: 6 height: 6
-                                new_batch: true
-                                draw_bg.color: #x4ADE80
-                                draw_bg.radius: 3.
-                            }
-                            sync_badge_label := Label{
-                                text: "同步中..."
-                                draw_text.color: #xF5F5FA
-                                draw_text.text_style.font_size: 11
-                            }
-                        }
 
-                        profile_pill := RoundedView{
-                            width: Fit height: Fit
-                            padding: Inset{ left: 10 right: 10 top: 5 bottom: 5 }
-                            new_batch: true
-                            draw_bg.color: #x14141C
-                            draw_bg.radius: 12.
-                            profile_label := Label{
-                                text: "骑行"
-                                draw_text.color: #xF5F5FA
-                                draw_text.text_style.font_size: 11
+                            sync_badge := MpCardChip{
+                                sync_badge_dot := MpBadgeDotIndicator{}
+                                sync_badge_label := Label{
+                                    text: "同步中..."
+                                    draw_text.color: #xF5F5FA
+                                    draw_text.text_style.font_size: 10
+                                }
+                            }
+
+                            profile_pill := MpCardChip{
+                                profile_label := Label{
+                                    text: "骑行"
+                                    draw_text.color: #xF5F5FA
+                                    draw_text.text_style.font_size: 11
+                                }
                             }
                         }
                     }
@@ -444,18 +654,17 @@ script_mod! {
                         sync_overlay := View{
                             width: Fill height: Fill
                             flow: Down
-                            align: Center
+                            align: Align{ x: 0.5 y: 0.40 }
                             spacing: 12
 
-                            View{ width: Fill height: 240 }
-
+                            sync_spinner := SyncSpinner{}
                             sync_overlay_label := Label{
                                 text: "同步中..."
                                 draw_text.color: #xF5F5FA
                                 draw_text.text_style.font_size: 18
                             }
                             sync_overlay_subtext := Label{
-                                text: "正在从 Project-Robius-China 拉取数据"
+                                text: "正在同步轨迹数据"
                                 draw_text.color: #x7A7B8C
                                 draw_text.text_style.font_size: 11
                             }
@@ -662,23 +871,18 @@ script_mod! {
                         new_batch: true
                         draw_bg.color: #x0A0A0F
 
-                        hud_speed_cell := RoundedView{
+                        hud_speed_cell := MpCardSmall{
                             width: Fill height: Fit
-                            flow: Down
-                            spacing: 2
+                            spacing: 8
                             padding: Inset{ left: 10 right: 10 top: 8 bottom: 8 }
-                            new_batch: true
                             draw_bg.color: #x14141C
                             draw_bg.radius: 6.
 
                             View{
                                 width: Fit height: Fit flow: Right spacing: 4
                                 align: Align{ y: 0.5 }
-                                hud_speed_icon := RoundedView{
-                                    width: 6 height: 6
-                                    new_batch: true
-                                    draw_bg.color: #xFF8A3D
-                                    draw_bg.radius: 3.
+                                hud_speed_icon := MpBadgeDotIndicator{
+                                    draw_bg.bg_color: #xFF8A3D
                                 }
                                 Label{
                                     text: "速度 km/h"
@@ -691,40 +895,25 @@ script_mod! {
                                 draw_text.color: #xF5F5FA
                                 draw_text.text_style.font_size: 18
                             }
-                            hud_speed_bar := View{
-                                width: Fill height: 4 flow: Right
-                                hud_speed_bar_fill := RoundedView{
-                                    width: Fill height: 4
-                                    new_batch: true
-                                    draw_bg.color: #xFF8A3D
-                                    draw_bg.radius: 2.
-                                }
-                                hud_speed_bar_rest := RoundedView{
-                                    width: 0 height: 4
-                                    new_batch: true
-                                    draw_bg.color: #x3B3B46
-                                    draw_bg.radius: 2.
-                                }
+                            hud_speed_bar := MpProgress{
+                                width: Fill height: 4
+                                draw_bg.fill_color: vec3(1.0, 0.541, 0.239)
+                                draw_bg.track_color: vec3(0.23, 0.23, 0.28)
                             }
                         }
 
-                        hud_hr_cell := RoundedView{
+                        hud_hr_cell := MpCardSmall{
                             width: Fill height: Fit
-                            flow: Down
-                            spacing: 2
+                            spacing: 8
                             padding: Inset{ left: 10 right: 10 top: 8 bottom: 8 }
-                            new_batch: true
                             draw_bg.color: #x14141C
                             draw_bg.radius: 6.
 
                             View{
                                 width: Fit height: Fit flow: Right spacing: 4
                                 align: Align{ y: 0.5 }
-                                hud_hr_icon := RoundedView{
-                                    width: 6 height: 6
-                                    new_batch: true
-                                    draw_bg.color: #xFF3B6E
-                                    draw_bg.radius: 3.
+                                hud_hr_icon := MpBadgeDotIndicator{
+                                    draw_bg.bg_color: #xFF3B6E
                                 }
                                 Label{
                                     text: "心率 bpm"
@@ -737,40 +926,25 @@ script_mod! {
                                 draw_text.color: #xF5F5FA
                                 draw_text.text_style.font_size: 18
                             }
-                            hud_hr_bar := View{
-                                width: Fill height: 4 flow: Right
-                                hud_hr_bar_fill := RoundedView{
-                                    width: Fill height: 4
-                                    new_batch: true
-                                    draw_bg.color: #xFF3B6E
-                                    draw_bg.radius: 2.
-                                }
-                                hud_hr_bar_rest := RoundedView{
-                                    width: 0 height: 4
-                                    new_batch: true
-                                    draw_bg.color: #x3B3B46
-                                    draw_bg.radius: 2.
-                                }
+                            hud_hr_bar := MpProgress{
+                                width: Fill height: 4
+                                draw_bg.fill_color: vec3(1.0, 0.231, 0.431)
+                                draw_bg.track_color: vec3(0.23, 0.23, 0.28)
                             }
                         }
 
-                        hud_ele_cell := RoundedView{
+                        hud_ele_cell := MpCardSmall{
                             width: Fill height: Fit
-                            flow: Down
-                            spacing: 2
+                            spacing: 8
                             padding: Inset{ left: 10 right: 10 top: 8 bottom: 8 }
-                            new_batch: true
                             draw_bg.color: #x14141C
                             draw_bg.radius: 6.
 
                             View{
                                 width: Fit height: Fit flow: Right spacing: 4
                                 align: Align{ y: 0.5 }
-                                hud_ele_icon := RoundedView{
-                                    width: 6 height: 6
-                                    new_batch: true
-                                    draw_bg.color: #x00E5FF
-                                    draw_bg.radius: 3.
+                                hud_ele_icon := MpBadgeDotIndicator{
+                                    draw_bg.bg_color: #x00E5FF
                                 }
                                 Label{
                                     text: "海拔 m"
@@ -783,40 +957,25 @@ script_mod! {
                                 draw_text.color: #xF5F5FA
                                 draw_text.text_style.font_size: 18
                             }
-                            hud_ele_bar := View{
-                                width: Fill height: 4 flow: Right
-                                hud_ele_bar_fill := RoundedView{
-                                    width: Fill height: 4
-                                    new_batch: true
-                                    draw_bg.color: #x00E5FF
-                                    draw_bg.radius: 2.
-                                }
-                                hud_ele_bar_rest := RoundedView{
-                                    width: 0 height: 4
-                                    new_batch: true
-                                    draw_bg.color: #x3B3B46
-                                    draw_bg.radius: 2.
-                                }
+                            hud_ele_bar := MpProgress{
+                                width: Fill height: 4
+                                draw_bg.fill_color: vec3(0.0, 0.898, 1.0)
+                                draw_bg.track_color: vec3(0.23, 0.23, 0.28)
                             }
                         }
 
-                        hud_cad_cell := RoundedView{
+                        hud_cad_cell := MpCardSmall{
                             width: Fill height: Fit
-                            flow: Down
-                            spacing: 2
+                            spacing: 8
                             padding: Inset{ left: 10 right: 10 top: 8 bottom: 8 }
-                            new_batch: true
                             draw_bg.color: #x14141C
                             draw_bg.radius: 6.
 
                             View{
                                 width: Fit height: Fit flow: Right spacing: 4
                                 align: Align{ y: 0.5 }
-                                hud_cad_icon := RoundedView{
-                                    width: 6 height: 6
-                                    new_batch: true
-                                    draw_bg.color: #xE8E8F0
-                                    draw_bg.radius: 3.
+                                hud_cad_icon := MpBadgeDotIndicator{
+                                    draw_bg.bg_color: #xE8E8F0
                                 }
                                 Label{
                                     text: "踏频 rpm"
@@ -829,157 +988,151 @@ script_mod! {
                                 draw_text.color: #xF5F5FA
                                 draw_text.text_style.font_size: 18
                             }
-                            hud_cad_bar := View{
-                                width: Fill height: 4 flow: Right
-                                hud_cad_bar_fill := RoundedView{
-                                    width: Fill height: 4
-                                    new_batch: true
-                                    draw_bg.color: #xE8E8F0
-                                    draw_bg.radius: 2.
-                                }
-                                hud_cad_bar_rest := RoundedView{
-                                    width: 0 height: 4
-                                    new_batch: true
-                                    draw_bg.color: #x3B3B46
-                                    draw_bg.radius: 2.
-                                }
+                            hud_cad_bar := MpProgress{
+                                width: Fill height: 4
+                                draw_bg.fill_color: vec3(0.91, 0.91, 0.94)
+                                draw_bg.track_color: vec3(0.23, 0.23, 0.28)
                             }
                         }
                     }
 
                     bottom_bar := View{
                         width: Fill height: Fit
-                        flow: Right
-                        padding: Inset{ left: 16 right: 16 top: 6 bottom: 14 }
-                        spacing: 10
-                        align: Align{ y: 0.5 }
+                        flow: Down
+                        padding: Inset{ left: 16 right: 16 top: 8 bottom: 14 }
+                        align: Align{ x: 0.5 }
                         show_bg: true
                         new_batch: true
                         draw_bg.color: #x0A0A0F
 
-                        current_time_label := Label{
-                            text: "00:00"
-                            draw_text.color: #xF5F5FA
-                            draw_text.text_style.font_size: 11
-                        }
+                        bottom_content := View{
+                            width: 340 height: Fit
+                            flow: Down
+                            spacing: 10
 
-                        // scrubber_track outer 48dp 高 (hit area, P11 全控件 ≥48dp) + inner 18dp 视觉
-                        scrubber_track := View{
-                            width: Fill height: 48
-                            align: Align{ y: 0.5 }
-                            new_batch: true
-                            scrubber_track_visual := View{
-                                width: Fill height: 18
+                            playback_progress_row := View{
+                                width: Fill height: Fit
                                 flow: Right
+                                spacing: 8
                                 align: Align{ y: 0.5 }
-                                scrubber_walked := RoundedView{
-                                    width: 0 height: 2
-                                    new_batch: true
-                                    draw_bg.color: #xF5F5FA
-                                    draw_bg.radius: 1.
-                                }
-                                scrubber_thumb := RoundedView{
-                                    width: 12 height: 12
-                                    new_batch: true
-                                    draw_bg.color: #xF5F5FA
-                                    draw_bg.radius: 6.
-                                }
-                                scrubber_unwalked := RoundedView{
-                                    width: Fill height: 2
-                                    new_batch: true
-                                    draw_bg.color: #x3B3B46
-                                    draw_bg.radius: 1.
-                                }
-                            }
-                        }
 
-                        total_time_label := Label{
-                            text: "00:00"
-                            draw_text.color: #x7A7B8C
-                            draw_text.text_style.font_size: 11
-                        }
-
-                        // speed_1x/4x/16x_button: outer 48x48 hit area + inner 36x28 视觉 RoundedView
-                        speed_1x_button := View{
-                            width: 48 height: 48
-                            align: Center
-                            new_batch: true
-                            speed_1x_visual := RoundedView{
-                                width: 36 height: 28
-                                align: Center
-                                new_batch: true
-                                draw_bg.color: #x14141C
-                                draw_bg.radius: 8.
-                                speed_1x_label := Label{
-                                    text: "1x"
-                                    draw_text.color: #xCCCCDD
-                                    draw_text.text_style.font_size: 12
-                                }
-                            }
-                        }
-                        speed_4x_button := View{
-                            width: 48 height: 48
-                            align: Center
-                            new_batch: true
-                            speed_4x_visual := RoundedView{
-                                width: 36 height: 28
-                                align: Center
-                                new_batch: true
-                                draw_bg.color: #x4A60D9
-                                draw_bg.radius: 8.
-                                speed_4x_label := Label{
-                                    text: "4x"
-                                    draw_text.color: #xFFFFFF
-                                    draw_text.text_style.font_size: 12
-                                }
-                            }
-                        }
-                        speed_16x_button := View{
-                            width: 48 height: 48
-                            align: Center
-                            new_batch: true
-                            speed_16x_visual := RoundedView{
-                                width: 36 height: 28
-                                align: Center
-                                new_batch: true
-                                draw_bg.color: #x14141C
-                                draw_bg.radius: 8.
-                                speed_16x_label := Label{
-                                    text: "16x"
-                                    draw_text.color: #xCCCCDD
-                                    draw_text.text_style.font_size: 12
-                                }
-                            }
-                        }
-                        // pause_button: outer 48x48 hit area + inner 40x40 视觉 RoundedView (含 ⏸ 字形 bars)
-                        pause_button := View{
-                            width: 48 height: 48
-                            align: Center
-                            new_batch: true
-                            pause_visual := RoundedView{
-                                width: 40 height: 40
-                                align: Center
-                                flow: Right
-                                spacing: 5
-                                new_batch: true
-                                draw_bg.color: #x1F1F2C
-                                draw_bg.radius: 20.
-                                pause_left_bar := RoundedView{
-                                    width: 4 height: 14
-                                    new_batch: true
-                                    draw_bg.color: #xF5F5FA
-                                    draw_bg.radius: 1.
-                                }
-                                pause_right_bar := RoundedView{
-                                    width: 4 height: 14
-                                    new_batch: true
-                                    draw_bg.color: #xF5F5FA
-                                    draw_bg.radius: 1.
-                                }
-                                pause_play_triangle := Label{
-                                    text: ""
+                                current_time_label := Label{
+                                    width: 43 height: Fit
+                                    text: "00:00"
                                     draw_text.color: #xF5F5FA
-                                    draw_text.text_style.font_size: 14
+                                    draw_text.text_style.font_size: 12
+                                }
+
+                                scrubber_slider := MpSlider{
+                                    width: Fill height: 48
+                                    draw_track.track_color: vec3(0.23, 0.23, 0.28)
+                                    draw_track.fill_color: vec3(0.42, 0.44, 0.50)
+                                    draw_thumb.thumb_color: vec3(0.36, 0.37, 0.42)
+                                    draw_thumb.border_color: vec3(0.36, 0.37, 0.42)
+                                }
+
+                                total_time_label := Label{
+                                    width: 51 height: Fit
+                                    text: "00:00"
+                                    draw_text.color: #xD4D5DD
+                                    draw_text.text_style.font_size: 12
+                                }
+                            }
+
+                            playback_controls_row := View{
+                                width: Fill height: Fit
+                                flow: Right
+                                spacing: 10
+                                align: Align{ y: 0.5 }
+
+                                View{ width: 56 height: 48 }
+
+                                speed_group := View{
+                                    width: Fill height: Fit
+                                    flow: Right
+                                    spacing: 10
+                                    align: Align{ x: 0.5 y: 0.5 }
+
+                                    speed_1x_button := View{
+                                        width: 60 height: 48
+                                        align: Center
+                                        new_batch: true
+                                        speed_1x_visual := MpButtonSmall{
+                                            width: 60
+                                            speed_1x_label := Label{
+                                                text: "1x"
+                                                draw_text.color: #xD4D5DD
+                                                draw_text.text_style.font_size: 12
+                                            }
+                                        }
+                                    }
+                                    speed_4x_button := View{
+                                        width: 60 height: 48
+                                        align: Center
+                                        new_batch: true
+                                        speed_4x_visual := MpButtonSmall{
+                                            width: 60
+                                            draw_bg.color: #x28C7E8
+                                            speed_4x_label := Label{
+                                                text: "4x"
+                                                draw_text.color: #xFFFFFF
+                                                draw_text.text_style.font_size: 12
+                                            }
+                                        }
+                                    }
+                                    speed_16x_button := View{
+                                        width: 60 height: 48
+                                        align: Center
+                                        new_batch: true
+                                        speed_16x_visual := MpButtonSmall{
+                                            width: 60
+                                            speed_16x_label := Label{
+                                                text: "16x"
+                                                draw_text.color: #xD4D5DD
+                                                draw_text.text_style.font_size: 12
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // pause_button: outer hit area + makepad-component button-style circular visual.
+                                pause_button := View{
+                                    width: 56 height: 56
+                                    align: Center
+                                    new_batch: true
+                                    pause_visual := MpButtonCircle{
+                                        width: 52 height: 52
+                                        flow: Overlay
+                                        draw_bg.color: #x10121B
+                                        draw_bg.radius: 26.
+                                        pause_bars_group := View{
+                                            width: Fill height: Fill
+                                            flow: Right
+                                            spacing: 5
+                                            align: Center
+                                            pause_left_bar := RoundedView{
+                                                width: 4 height: 14
+                                                new_batch: true
+                                                draw_bg.color: #xF5F5FA
+                                                draw_bg.radius: 1.
+                                            }
+                                            pause_right_bar := RoundedView{
+                                                width: 4 height: 14
+                                                new_batch: true
+                                                draw_bg.color: #xF5F5FA
+                                                draw_bg.radius: 1.
+                                            }
+                                        }
+                                        pause_play_group := View{
+                                            width: Fill height: Fill
+                                            align: Align{ x: 0.54 y: 0.5 }
+                                            pause_play_triangle := Label{
+                                                text: "▶"
+                                                draw_text.color: #xF5F5FA
+                                                draw_text.text_style.font_size: 22
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -993,109 +1146,320 @@ script_mod! {
 #[derive(Script, ScriptHook)]
 #[repr(C)]
 pub struct DrawTrack {
-    #[deref] draw_super: DrawQuad,
-    #[live] track_progress: f32,
-    #[live] polyline_color_mix: f32,
-    #[live] particle_density: f32,
-    #[live] elevation_z: f32,
-    #[live] guard_pulse_phase: f32,
-    #[live] walked_segment_ratio: f32,
-    #[live] scrubber_echo_phase: f32,
-    #[live] overlay_dim: f32,
-    #[live] seg_count: f32,
-    #[live] seg_idx: f32,
-    #[live] start_xy: Vec2,
-    #[live] end_xy: Vec2,
-    #[live] t_a: f32,
-    #[live] t_b: f32,
-    #[live] speed_a: f32,
-    #[live] speed_b: f32,
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    track_progress: f32,
+    #[live]
+    polyline_color_mix: f32,
+    #[live]
+    particle_density: f32,
+    #[live]
+    elevation_z: f32,
+    #[live]
+    guard_pulse_phase: f32,
+    #[live]
+    walked_segment_ratio: f32,
+    #[live]
+    scrubber_echo_phase: f32,
+    #[live]
+    overlay_dim: f32,
+    #[live]
+    sync_placeholder: f32,
+    #[live]
+    seg_count: f32,
+    #[live]
+    seg_idx: f32,
+    #[live]
+    start_xy: Vec2,
+    #[live]
+    end_xy: Vec2,
+    #[live]
+    t_a: f32,
+    #[live]
+    t_b: f32,
+    #[live]
+    speed_a: f32,
+    #[live]
+    speed_b: f32,
 }
 
 #[derive(Script, ScriptHook)]
 #[repr(C)]
 pub struct DrawMarker {
-    #[deref] draw_super: DrawQuad,
-    #[live] marker_color: Vec3,
-    #[live] marker_radius: f32,
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    marker_color: Vec3,
+    #[live]
+    marker_radius: f32,
 }
 
 #[derive(Script, ScriptHook)]
 #[repr(C)]
 pub struct DrawHalo {
-    #[deref] draw_super: DrawQuad,
-    #[live] hr_phase: f32,
-    #[live] guard_pulse_phase: f32,
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    hr_phase: f32,
+    #[live]
+    guard_pulse_phase: f32,
 }
 
 #[derive(Script, ScriptHook)]
 #[repr(C)]
 pub struct DrawGuardEdge {
-    #[deref] draw_super: DrawQuad,
-    #[live] guard_pulse_phase: f32,
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    guard_pulse_phase: f32,
 }
 
 #[derive(Script, ScriptHook)]
 #[repr(C)]
 pub struct DrawWater {
-    #[deref] draw_super: DrawQuad,
-    #[live] water_color: Vec3,
-    #[live] edge_softness: f32,
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    water_color: Vec3,
+    #[live]
+    edge_softness: f32,
 }
 
 #[derive(Script, ScriptHook)]
 #[repr(C)]
 pub struct DrawMapGrid {
-    #[deref] draw_super: DrawQuad,
-    #[live] grid_color: Vec3,
-    #[live] bg_color: Vec3,
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    grid_color: Vec3,
+    #[live]
+    bg_color: Vec3,
+}
+
+#[derive(Script, ScriptHook)]
+#[repr(C)]
+pub struct DrawSyncSpinner {
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    spinner_color: Vec3,
+    #[live]
+    spinner_track: Vec3,
+    #[live]
+    stroke_width: f32,
+    #[live]
+    arc_ratio: f32,
+}
+
+#[derive(Script, ScriptHook)]
+#[repr(C)]
+pub struct DrawMpProgress {
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    progress: f32,
+    #[live]
+    track_color: Vec3,
+    #[live]
+    fill_color: Vec3,
+}
+
+#[derive(Script, ScriptHook)]
+#[repr(C)]
+pub struct DrawMpSliderTrack {
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    progress_start: f32,
+    #[live]
+    progress_end: f32,
+    #[live]
+    track_color: Vec3,
+    #[live]
+    fill_color: Vec3,
+}
+
+#[derive(Script, ScriptHook)]
+#[repr(C)]
+pub struct DrawMpSliderThumb {
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    thumb_color: Vec3,
+    #[live]
+    border_color: Vec3,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SliderValue {
+    Single(f64),
+    Range(f64, f64),
+}
+
+impl Default for SliderValue {
+    fn default() -> Self {
+        SliderValue::Single(0.0)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub enum MpSliderAction {
+    Changed(SliderValue),
+    #[default]
+    None,
 }
 
 // P12.1 B5 升级: 离散粒子 instanced rendering (per spec.spec L209: 1000-2000 粒子)
 #[derive(Script, ScriptHook)]
 #[repr(C)]
 pub struct DrawParticle {
-    #[deref] draw_super: DrawQuad,
-    #[live] particle_color: Vec3,
-    #[live] particle_alpha: f32,
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    particle_color: Vec3,
+    #[live]
+    particle_alpha: f32,
 }
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct TrackCanvas {
-    #[uid] uid: WidgetUid,
-    #[walk] walk: Walk,
-    #[layout] layout: Layout,
+    #[uid]
+    uid: WidgetUid,
+    #[walk]
+    walk: Walk,
+    #[layout]
+    layout: Layout,
 
-    #[redraw] #[live] draw_track: DrawTrack,
-    #[live] draw_start_marker: DrawMarker,
-    #[live] draw_end_marker: DrawMarker,
-    #[live] draw_halo: DrawHalo,
-    #[live] draw_water: DrawWater,
-    #[live] draw_map: DrawMapGrid,
-    #[live] draw_particle: DrawParticle,
+    #[redraw]
+    #[live]
+    draw_track: DrawTrack,
+    #[live]
+    draw_start_marker: DrawMarker,
+    #[live]
+    draw_end_marker: DrawMarker,
+    #[live]
+    draw_halo: DrawHalo,
+    #[live]
+    draw_water: DrawWater,
+    #[live]
+    draw_map: DrawMapGrid,
+    #[live]
+    draw_particle: DrawParticle,
 
-    #[rust] track: Option<Arc<Track>>,
-    #[rust] geom: Option<TrackGeom>,
-    #[rust] last_rect_size: Vec2,
-    #[rust] walked_ratio: f32,
-    #[rust] track_progress: f32,
-    #[rust] hr_phase_val: f32,
-    #[rust] guard_pulse: f32,
-    #[rust] overlay_dim_val: f32,
+    #[rust]
+    track: Option<Arc<Track>>,
+    #[rust]
+    geom: Option<TrackGeom>,
+    #[rust]
+    last_rect_size: Vec2,
+    #[rust]
+    walked_ratio: f32,
+    #[rust]
+    track_progress: f32,
+    #[rust]
+    hr_phase_val: f32,
+    #[rust]
+    guard_pulse: f32,
+    #[rust]
+    overlay_dim_val: f32,
+    #[rust]
+    sync_placeholder: bool,
 
-    #[area] #[rust] area: Area,
+    #[area]
+    #[rust]
+    area: Area,
 }
 
 #[derive(Script, ScriptHook, Widget)]
 pub struct GuardEdge {
-    #[uid] uid: WidgetUid,
-    #[walk] walk: Walk,
-    #[layout] layout: Layout,
+    #[uid]
+    uid: WidgetUid,
+    #[walk]
+    walk: Walk,
+    #[layout]
+    layout: Layout,
 
-    #[redraw] #[live] draw_edge: DrawGuardEdge,
+    #[redraw]
+    #[live]
+    draw_edge: DrawGuardEdge,
 
-    #[rust] pulse: f32,
-    #[area] #[rust] area: Area,
+    #[rust]
+    pulse: f32,
+    #[area]
+    #[rust]
+    area: Area,
+}
+
+#[derive(Script, ScriptHook, Widget)]
+pub struct SyncSpinner {
+    #[uid]
+    uid: WidgetUid,
+    #[walk]
+    walk: Walk,
+    #[layout]
+    layout: Layout,
+
+    #[redraw]
+    #[live]
+    draw_spinner: DrawSyncSpinner,
+
+    #[area]
+    #[rust]
+    area: Area,
+}
+
+#[derive(Script, ScriptHook, Widget)]
+pub struct MpProgress {
+    #[uid]
+    uid: WidgetUid,
+    #[walk]
+    walk: Walk,
+    #[layout]
+    layout: Layout,
+
+    #[redraw]
+    #[live]
+    draw_bg: DrawMpProgress,
+    #[live]
+    value: f64,
+
+    #[area]
+    #[rust]
+    area: Area,
+}
+
+#[derive(Script, ScriptHook, Widget)]
+pub struct MpSlider {
+    #[uid]
+    uid: WidgetUid,
+    #[walk]
+    walk: Walk,
+    #[layout]
+    layout: Layout,
+
+    #[redraw]
+    #[live]
+    draw_track: DrawMpSliderTrack,
+    #[live]
+    draw_thumb: DrawMpSliderThumb,
+    #[live]
+    value: f64,
+    #[live(0.0)]
+    min: f64,
+    #[live(100.0)]
+    max: f64,
+    #[live(1.0)]
+    step: f64,
+    #[live(false)]
+    disabled: bool,
+
+    #[rust]
+    dragging: bool,
+
+    #[area]
+    #[rust]
+    area: Area,
 }
 
 #[derive(Default)]
@@ -1117,8 +1481,7 @@ struct TrackSegment {
 }
 
 impl Widget for TrackCanvas {
-    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {
-    }
+    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {}
 
     fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
         cx.begin_turtle(walk, self.layout);
@@ -1163,106 +1526,113 @@ impl Widget for TrackCanvas {
                 }
                 self.draw_track.end_many_instances(cx);
 
-                // P12.1 B5: 离散粒子 instanced rendering 1500 粒子 (per spec.spec L209: 1000-2000).
-                // 沿 walked segments 采样位置, golden angle scatter, walked_color by speed.
-                // particle_density (DrawTrack uniform) reduced_motion=0 时 procedural 粒子消失,
-                // 离散粒子可见性由 walked_ratio 推进决定.
-                self.draw_particle.begin_many_instances(cx);
-                let total_particles: usize = 1500;
-                let golden_angle: f32 = 2.39996322972865332;
-                let scatter_radius: f32 = 6.0;
-                for i in 0..total_particles {
-                    let phase_norm = i as f32 / total_particles as f32;
-                    if phase_norm > self.walked_ratio {
-                        continue;
+                if !self.sync_placeholder {
+                    // P12.1 B5: 离散粒子 instanced rendering 1500 粒子 (per spec.spec L209: 1000-2000).
+                    // 沿 walked segments 采样位置, golden angle scatter, walked_color by speed.
+                    // particle_density (DrawTrack uniform) reduced_motion=0 时 procedural 粒子消失,
+                    // 离散粒子可见性由 walked_ratio 推进决定.
+                    self.draw_particle.begin_many_instances(cx);
+                    let total_particles: usize = 1500;
+                    let golden_angle: f32 = 2.399_963_1;
+                    let scatter_radius: f32 = 6.0;
+                    for i in 0..total_particles {
+                        let phase_norm = i as f32 / total_particles as f32;
+                        if phase_norm > self.walked_ratio {
+                            continue;
+                        }
+                        let seg_idx = ((phase_norm * segs.len() as f32) as usize)
+                            .min(segs.len().saturating_sub(1));
+                        let seg = &segs[seg_idx];
+                        let scatter_angle = (i as f32) * golden_angle;
+                        let scatter_x = scatter_angle.cos() * scatter_radius;
+                        let scatter_y = scatter_angle.sin() * scatter_radius;
+                        let mid_x = (seg.start.x + seg.end.x) * 0.5 + scatter_x;
+                        let mid_y = (seg.start.y + seg.end.y) * 0.5 + scatter_y;
+                        let speed = (seg.speed_a + seg.speed_b) * 0.5;
+                        let speed_norm = (speed / 12.0).clamp(0.0, 1.0);
+                        let color = if speed_norm < 0.5 {
+                            let t = speed_norm * 2.0;
+                            vec3(
+                                0.91 * (1.0 - t) + 1.0 * t,
+                                0.91 * (1.0 - t) + 0.541 * t,
+                                0.94 * (1.0 - t) + 0.239 * t,
+                            )
+                        } else {
+                            let t = (speed_norm - 0.5) * 2.0;
+                            vec3(
+                                1.0 * (1.0 - t),
+                                0.541 * (1.0 - t) + 0.898 * t,
+                                0.239 * (1.0 - t) + 1.0 * t,
+                            )
+                        };
+                        let psize: f64 = 3.0;
+                        self.draw_particle.particle_color = color;
+                        self.draw_particle.particle_alpha = 0.7;
+                        self.draw_particle.draw_abs(
+                            cx,
+                            Rect {
+                                pos: dvec2(mid_x as f64 - psize * 0.5, mid_y as f64 - psize * 0.5),
+                                size: dvec2(psize, psize),
+                            },
+                        );
                     }
-                    let seg_idx = ((phase_norm * segs.len() as f32) as usize)
-                        .min(segs.len().saturating_sub(1));
-                    let seg = &segs[seg_idx];
-                    let scatter_angle = (i as f32) * golden_angle;
-                    let scatter_x = scatter_angle.cos() * scatter_radius;
-                    let scatter_y = scatter_angle.sin() * scatter_radius;
-                    let mid_x = (seg.start.x + seg.end.x) * 0.5 + scatter_x;
-                    let mid_y = (seg.start.y + seg.end.y) * 0.5 + scatter_y;
-                    let speed = (seg.speed_a + seg.speed_b) * 0.5;
-                    let speed_norm = (speed / 12.0).clamp(0.0, 1.0);
-                    let color = if speed_norm < 0.5 {
-                        let t = speed_norm * 2.0;
-                        vec3(
-                            0.91 * (1.0 - t) + 1.0 * t,
-                            0.91 * (1.0 - t) + 0.541 * t,
-                            0.94 * (1.0 - t) + 0.239 * t,
-                        )
-                    } else {
-                        let t = (speed_norm - 0.5) * 2.0;
-                        vec3(
-                            1.0 * (1.0 - t),
-                            0.541 * (1.0 - t) + 0.898 * t,
-                            0.239 * (1.0 - t) + 1.0 * t,
-                        )
+                    self.draw_particle.end_many_instances(cx);
+
+                    let marker_size: f64 = 14.0;
+                    let marker_rect = |p: Vec2| Rect {
+                        pos: dvec2(
+                            p.x as f64 - marker_size * 0.5,
+                            p.y as f64 - marker_size * 0.5,
+                        ),
+                        size: dvec2(marker_size, marker_size),
                     };
-                    let psize: f64 = 3.0;
-                    self.draw_particle.particle_color = color;
-                    self.draw_particle.particle_alpha = 0.7;
-                    self.draw_particle.draw_abs(
+                    self.draw_start_marker.marker_color = vec3(0.063, 0.722, 0.506);
+                    self.draw_start_marker.marker_radius = 5.0;
+                    self.draw_start_marker
+                        .draw_abs(cx, marker_rect(geom.start_screen));
+                    self.draw_end_marker.marker_color = vec3(0.478, 0.482, 0.549);
+                    self.draw_end_marker.marker_radius = 5.0;
+                    self.draw_end_marker
+                        .draw_abs(cx, marker_rect(geom.end_screen));
+
+                    if let Some(cur) = lerp_segments(&geom.segs, self.walked_ratio) {
+                        let halo_size: f64 = 32.0;
+                        let halo_rect = Rect {
+                            pos: dvec2(
+                                cur.x as f64 - halo_size * 0.5,
+                                cur.y as f64 - halo_size * 0.5,
+                            ),
+                            size: dvec2(halo_size, halo_size),
+                        };
+                        self.draw_halo.draw_abs(cx, halo_rect);
+                    }
+
+                    let big_marker_size: f64 = 18.0;
+                    self.draw_start_marker.marker_color = vec3(0.063, 0.722, 0.506);
+                    self.draw_start_marker.marker_radius = 7.0;
+                    self.draw_start_marker.draw_abs(
                         cx,
                         Rect {
-                            pos: dvec2(mid_x as f64 - psize * 0.5, mid_y as f64 - psize * 0.5),
-                            size: dvec2(psize, psize),
+                            pos: dvec2(
+                                geom.start_screen.x as f64 - big_marker_size * 0.5,
+                                geom.start_screen.y as f64 - big_marker_size * 0.5,
+                            ),
+                            size: dvec2(big_marker_size, big_marker_size),
+                        },
+                    );
+                    self.draw_end_marker.marker_color = vec3(0.478, 0.482, 0.549);
+                    self.draw_end_marker.marker_radius = 7.0;
+                    self.draw_end_marker.draw_abs(
+                        cx,
+                        Rect {
+                            pos: dvec2(
+                                geom.end_screen.x as f64 - big_marker_size * 0.5,
+                                geom.end_screen.y as f64 - big_marker_size * 0.5,
+                            ),
+                            size: dvec2(big_marker_size, big_marker_size),
                         },
                     );
                 }
-                self.draw_particle.end_many_instances(cx);
-
-                let marker_size: f64 = 14.0;
-                let marker_rect = |p: Vec2| Rect {
-                    pos: dvec2(p.x as f64 - marker_size * 0.5, p.y as f64 - marker_size * 0.5),
-                    size: dvec2(marker_size, marker_size),
-                };
-                self.draw_start_marker.marker_color = vec3(0.063, 0.722, 0.506);
-                self.draw_start_marker.marker_radius = 5.0;
-                self.draw_start_marker.draw_abs(cx, marker_rect(geom.start_screen));
-                self.draw_end_marker.marker_color = vec3(0.478, 0.482, 0.549);
-                self.draw_end_marker.marker_radius = 5.0;
-                self.draw_end_marker.draw_abs(cx, marker_rect(geom.end_screen));
-
-                if let Some(cur) = lerp_segments(&geom.segs, self.walked_ratio) {
-                    let halo_size: f64 = 32.0;
-                    let halo_rect = Rect {
-                        pos: dvec2(
-                            cur.x as f64 - halo_size * 0.5,
-                            cur.y as f64 - halo_size * 0.5,
-                        ),
-                        size: dvec2(halo_size, halo_size),
-                    };
-                    self.draw_halo.draw_abs(cx, halo_rect);
-                }
-
-                let big_marker_size: f64 = 18.0;
-                self.draw_start_marker.marker_color = vec3(0.063, 0.722, 0.506);
-                self.draw_start_marker.marker_radius = 7.0;
-                self.draw_start_marker.draw_abs(
-                    cx,
-                    Rect {
-                        pos: dvec2(
-                            geom.start_screen.x as f64 - big_marker_size * 0.5,
-                            geom.start_screen.y as f64 - big_marker_size * 0.5,
-                        ),
-                        size: dvec2(big_marker_size, big_marker_size),
-                    },
-                );
-                self.draw_end_marker.marker_color = vec3(0.478, 0.482, 0.549);
-                self.draw_end_marker.marker_radius = 7.0;
-                self.draw_end_marker.draw_abs(
-                    cx,
-                    Rect {
-                        pos: dvec2(
-                            geom.end_screen.x as f64 - big_marker_size * 0.5,
-                            geom.end_screen.y as f64 - big_marker_size * 0.5,
-                        ),
-                        size: dvec2(big_marker_size, big_marker_size),
-                    },
-                );
             }
         }
 
@@ -1313,7 +1683,9 @@ impl TrackCanvas {
         if !needs_recompute {
             return;
         }
-        let Some(track) = self.track.as_ref() else { return };
+        let Some(track) = self.track.as_ref() else {
+            return;
+        };
         if track.points.is_empty() {
             return;
         }
@@ -1417,6 +1789,12 @@ impl TrackCanvas {
         self.area.redraw(cx);
     }
 
+    pub fn set_sync_placeholder(&mut self, cx: &mut Cx, enabled: bool) {
+        self.sync_placeholder = enabled;
+        self.draw_track.sync_placeholder = if enabled { 1.0 } else { 0.0 };
+        self.area.redraw(cx);
+    }
+
     pub fn set_hr_phase(&mut self, cx: &mut Cx, hr_phase: f32) {
         self.hr_phase_val = hr_phase;
         self.draw_halo.hr_phase = hr_phase;
@@ -1442,13 +1820,14 @@ impl TrackCanvas {
     }
 
     pub fn marker_layout(&self) -> Option<(Vec2, Vec2, Vec2)> {
-        self.geom.as_ref().map(|g| (g.start_screen, g.end_screen, g.rect_size))
+        self.geom
+            .as_ref()
+            .map(|g| (g.start_screen, g.end_screen, g.rect_size))
     }
 }
 
 impl Widget for GuardEdge {
-    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {
-    }
+    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {}
 
     fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
         cx.begin_turtle(walk, self.layout);
@@ -1467,6 +1846,162 @@ impl GuardEdge {
     }
 }
 
+impl Widget for SyncSpinner {
+    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {}
+
+    fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
+        cx.begin_turtle(walk, self.layout);
+        let rect = cx.turtle().rect();
+        self.draw_spinner.draw_abs(cx, rect);
+        cx.end_turtle_with_area(&mut self.area);
+        DrawStep::done()
+    }
+}
+
+impl SyncSpinner {
+    pub fn redraw(&mut self, cx: &mut Cx) {
+        self.area.redraw(cx);
+    }
+}
+
+impl Widget for MpProgress {
+    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {}
+
+    fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
+        cx.begin_turtle(walk, self.layout);
+        let rect = cx.turtle().rect();
+        self.draw_bg.progress = (self.value / 100.0).clamp(0.0, 1.0) as f32;
+        self.draw_bg.draw_abs(cx, rect);
+        cx.end_turtle_with_area(&mut self.area);
+        DrawStep::done()
+    }
+}
+
+impl MpProgress {
+    pub fn set_value(&mut self, cx: &mut Cx, value: f64) {
+        self.value = value.clamp(0.0, 100.0);
+        self.area.redraw(cx);
+    }
+}
+
+impl Widget for MpSlider {
+    fn handle_event(&mut self, cx: &mut Cx, event: &Event, _scope: &mut Scope) {
+        if self.disabled {
+            return;
+        }
+
+        match event.hits(cx, self.area) {
+            Hit::FingerHoverIn(_) => {
+                cx.set_cursor(MouseCursor::Hand);
+            }
+            Hit::FingerHoverOver(_) => {
+                cx.set_cursor(MouseCursor::Hand);
+            }
+            Hit::FingerDown(fe) => {
+                self.dragging = true;
+                self.update_value_from_position(cx, fe.abs);
+            }
+            Hit::FingerMove(fe) if self.dragging => {
+                self.update_value_from_position(cx, fe.abs);
+            }
+            Hit::FingerUp(_) => {
+                self.dragging = false;
+            }
+            Hit::FingerHoverOut(_) if !self.dragging => {
+                cx.set_cursor(MouseCursor::Default);
+            }
+            _ => {}
+        }
+    }
+
+    fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
+        cx.begin_turtle(walk, self.layout);
+        let rect = cx.turtle().rect();
+        let progress = self.value_to_progress(self.value) as f32;
+        self.draw_track.progress_start = 0.0;
+        self.draw_track.progress_end = progress;
+
+        let track_thickness = 6.0;
+        let thumb_size = 18.0;
+        let track_x = thumb_size * 0.5;
+        let track_rect = Rect {
+            pos: dvec2(
+                rect.pos.x + track_x,
+                rect.pos.y + (rect.size.y - track_thickness) * 0.5,
+            ),
+            size: dvec2((rect.size.x - thumb_size).max(1.0), track_thickness),
+        };
+        self.draw_track.draw_abs(cx, track_rect);
+
+        let thumb_x = rect.pos.x + (rect.size.x - thumb_size).max(0.0) * progress as f64;
+        let thumb_rect = Rect {
+            pos: dvec2(thumb_x, rect.pos.y + (rect.size.y - thumb_size) * 0.5),
+            size: dvec2(thumb_size, thumb_size),
+        };
+        self.draw_thumb.draw_abs(cx, thumb_rect);
+        cx.end_turtle_with_area(&mut self.area);
+        DrawStep::done()
+    }
+}
+
+impl MpSlider {
+    fn value_to_progress(&self, value: f64) -> f64 {
+        if self.max <= self.min {
+            return 0.0;
+        }
+        ((value - self.min) / (self.max - self.min)).clamp(0.0, 1.0)
+    }
+
+    fn progress_to_value(&self, progress: f64) -> f64 {
+        self.min + (self.max - self.min) * progress.clamp(0.0, 1.0)
+    }
+
+    fn position_to_progress(&self, cx: &Cx, pos: DVec2) -> f64 {
+        let rect = self.area.rect(cx);
+        let thumb_radius = 9.0;
+        let track_start = rect.pos.x + thumb_radius;
+        let track_width = rect.size.x - thumb_radius * 2.0;
+        if track_width <= 0.0 {
+            return 0.0;
+        }
+        ((pos.x - track_start).clamp(0.0, track_width)) / track_width
+    }
+
+    fn update_value_from_position(&mut self, cx: &mut Cx, pos: DVec2) {
+        let progress = self.position_to_progress(cx, pos);
+        let raw_value = self.progress_to_value(progress);
+        let stepped_value = if self.step > 0.0 {
+            let steps = ((raw_value - self.min) / self.step).round();
+            self.min + steps * self.step
+        } else {
+            raw_value
+        };
+        let new_value = stepped_value.clamp(self.min, self.max);
+        if (new_value - self.value).abs() > f64::EPSILON {
+            self.value = new_value;
+            cx.widget_action(
+                self.widget_uid(),
+                MpSliderAction::Changed(SliderValue::Single(self.value)),
+            );
+            self.area.redraw(cx);
+        }
+    }
+
+    pub fn changed(&self, actions: &Actions) -> Option<SliderValue> {
+        if let Some(item) = actions.find_widget_action(self.widget_uid()) {
+            if let MpSliderAction::Changed(value) = item.cast() {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    pub fn set_single_value(&mut self, cx: &mut Cx, value: f64) {
+        self.value = value.clamp(self.min, self.max);
+        self.area.redraw(cx);
+    }
+}
+
 #[derive(Default)]
 struct GuardWindow {
     start_idx: usize,
@@ -1476,30 +2011,49 @@ struct GuardWindow {
 
 #[derive(Script, ScriptHook)]
 pub struct App {
-    #[live] ui: WidgetRef,
+    #[live]
+    ui: WidgetRef,
 
-    #[rust] track: Option<Arc<Track>>,
-    #[rust] state: PlaybackState,
-    #[rust] user: UserProfile,
-    #[rust] network_rx: Option<Receiver<FetchResult>>,
-    #[rust] worker_thread_id: Option<std::thread::ThreadId>,
-    #[rust] pending_fetch: Option<FetchResult>,
-    #[rust] fetching_started_at_secs: Option<f64>,
+    #[rust]
+    track: Option<Arc<Track>>,
+    #[rust]
+    state: PlaybackState,
+    #[rust]
+    user: UserProfile,
+    #[rust]
+    network_rx: Option<Receiver<FetchResult>>,
+    #[rust]
+    worker_thread_id: Option<std::thread::ThreadId>,
+    #[rust]
+    pending_fetch: Option<FetchResult>,
+    #[rust]
+    fetching_started_at_secs: Option<f64>,
 
-    #[rust] phase: i32,
-    #[rust] now_secs: f64,
-    #[rust] last_now_secs: f64,
-    #[rust] phase_entered_secs: f64,
-    #[rust] success_entered_secs: Option<f64>,
+    #[rust]
+    phase: i32,
+    #[rust]
+    now_secs: f64,
+    #[rust]
+    last_now_secs: f64,
+    #[rust]
+    phase_entered_secs: f64,
+    #[rust]
+    success_entered_secs: Option<f64>,
 
-    #[rust] guard_window: GuardWindow,
-    #[rust] guard_active_started_at_secs: f64,
-    #[rust] guard_card_visible: bool,
-    #[rust] last_scrubber_drag_secs: f64,
+    #[rust]
+    guard_window: GuardWindow,
+    #[rust]
+    guard_active_started_at_secs: f64,
+    #[rust]
+    guard_card_visible: bool,
+    #[rust]
+    last_scrubber_drag_secs: f64,
 
-    #[rust] reduced_motion: bool,
+    #[rust]
+    reduced_motion: bool,
 
-    #[rust] next_frame: NextFrame,
+    #[rust]
+    next_frame: NextFrame,
 }
 
 impl App {
@@ -1520,13 +2074,43 @@ impl App {
             .unwrap_or("—")
     }
 
+    fn route_title_lines(&self) -> (String, String) {
+        let route = self.route_name().trim();
+        if route.is_empty() {
+            return ("—".to_string(), String::new());
+        }
+
+        let mut scan_from = 0usize;
+        for token in route.split_whitespace() {
+            let Some(rel_start) = route[scan_from..].find(token) else {
+                continue;
+            };
+            let start = scan_from + rel_start;
+            let end = start + token.len();
+            scan_from = end;
+
+            if token.starts_with('#') {
+                let primary = route[..end].trim();
+                let secondary = route[end..].trim();
+                if !secondary.is_empty() {
+                    return (primary.to_string(), secondary.to_string());
+                }
+            }
+        }
+
+        (route.to_string(), String::new())
+    }
+
     fn refresh_top_bar(&mut self, cx: &mut Cx) {
         let sync_text = self.state.sync_status_text();
-        let route = self.route_name().to_string();
+        let (route_primary, route_secondary) = self.route_title_lines();
         let profile_label = self.state.profile.label_zh();
         self.ui
-            .label(cx, ids!(route_name_label))
-            .set_text(cx, &route);
+            .label(cx, ids!(route_title_primary))
+            .set_text(cx, &route_primary);
+        self.ui
+            .label(cx, ids!(route_title_secondary))
+            .set_text(cx, &route_secondary);
         self.ui
             .label(cx, ids!(sync_badge_label))
             .set_text(cx, sync_text);
@@ -1550,9 +2134,7 @@ impl App {
             NetworkState::Fallback => "本地缓存",
         };
         let sub = match self.state.network_state {
-            NetworkState::Idle | NetworkState::Fetching => {
-                "正在从 Project-Robius-China 拉取数据"
-            }
+            NetworkState::Idle | NetworkState::Fetching => "正在同步轨迹数据",
             NetworkState::Success => "数据来自 trajectory-replay-data 仓库",
             NetworkState::Fallback => "已退回 assets/cycling-track.gpx",
         };
@@ -1571,9 +2153,7 @@ impl App {
             .map(|t| t.stats.speed_max_mps_ceil)
             .unwrap_or(0.0);
         let txt = format!("{}", max_speed as i32);
-        self.ui
-            .label(cx, ids!(legend_max_label))
-            .set_text(cx, &txt);
+        self.ui.label(cx, ids!(legend_max_label)).set_text(cx, &txt);
     }
 
     fn poll_network(&mut self, cx: &mut Cx, now_secs: f64) {
@@ -1631,7 +2211,9 @@ impl App {
     }
 
     fn compute_guard_window(&mut self) {
-        let Some(track) = self.track.as_ref().cloned() else { return };
+        let Some(track) = self.track.as_ref().cloned() else {
+            return;
+        };
         if std::env::var("MOBILE_EXAMPLE_DEMO_GUARD").is_ok() {
             let n = track.points.len();
             self.guard_window = GuardWindow {
@@ -1668,22 +2250,32 @@ impl App {
     fn maybe_advance_phase(&mut self, cx: &mut Cx, now: f64) {
         let dt = (now - self.last_now_secs).max(0.0);
         self.last_now_secs = now;
+        let frozen_s0 = demo_stage() == Some(DemoStage::S0);
         let mut track_progress_v: f32 = 0.0;
         let mut walked_ratio_v: f32 = 0.0;
         let mut overlay_dim_v: f32 = 0.0;
+        if frozen_s0 {
+            self.phase = PHASE_SYNCING;
+            self.state.network_state = NetworkState::Fetching;
+            self.state.playback_progress = 0.0;
+            self.state.walked_segment_ratio = 0.0;
+            self.state.contract_guard_active = false;
+        }
         match self.phase {
-            PHASE_SYNCING => {
-                if matches!(
-                    self.state.network_state,
-                    NetworkState::Success | NetworkState::Fallback
-                ) {
-                    if let Some(t) = self.success_entered_secs {
-                        if now - t >= SUCCESS_LABEL_VISIBLE_SECS {
-                            self.enter_phase(cx, PHASE_PATH_DRAW, now);
-                        }
+            PHASE_SYNCING
+                if !frozen_s0
+                    && matches!(
+                        self.state.network_state,
+                        NetworkState::Success | NetworkState::Fallback
+                    ) =>
+            {
+                if let Some(t) = self.success_entered_secs {
+                    if now - t >= SUCCESS_LABEL_VISIBLE_SECS {
+                        self.enter_phase(cx, PHASE_PATH_DRAW, now);
                     }
                 }
             }
+            PHASE_SYNCING => {}
             PHASE_PATH_DRAW => {
                 let elapsed = now - self.phase_entered_secs;
                 let raw = (elapsed / PATH_DRAW_DURATION_SECS).clamp(0.0, 1.0);
@@ -1698,8 +2290,8 @@ impl App {
                     let total = (track.stats.duration_ms_total.max(1)) as f64;
                     if !self.state.is_paused {
                         let inc = (dt * self.state.playback_speed as f64) * 1000.0 / total;
-                        let new_p = (self.state.playback_progress as f64 + inc).clamp(0.0, 1.0)
-                            as f32;
+                        let new_p =
+                            (self.state.playback_progress as f64 + inc).clamp(0.0, 1.0) as f32;
                         self.state.apply_progress(&track, new_p);
                     }
                     track_progress_v = 1.0;
@@ -1759,13 +2351,27 @@ impl App {
         if let Some(mut canvas) = canvas_ref.borrow_mut::<TrackCanvas>() {
             canvas.set_track(cx, track_arc);
             canvas.set_progress(cx, walked_ratio_v, track_progress_v);
+            canvas.set_sync_placeholder(cx, frozen_s0);
             canvas.set_hr_phase(cx, hr_phase_now);
             canvas.set_guard_pulse(cx, guard_pulse_v);
             canvas.set_overlay_dim(cx, overlay_dim_v);
             canvas.set_scrubber_echo(cx, scrubber_echo_v);
             layout = canvas.marker_layout();
         }
-        if let Some(mut guard_edge) = self.ui.widget(cx, ids!(guard_edge)).borrow_mut::<GuardEdge>() {
+        if self.phase == PHASE_SYNCING {
+            if let Some(mut spinner) = self
+                .ui
+                .widget(cx, ids!(sync_spinner))
+                .borrow_mut::<SyncSpinner>()
+            {
+                spinner.redraw(cx);
+            }
+        }
+        if let Some(mut guard_edge) = self
+            .ui
+            .widget(cx, ids!(guard_edge))
+            .borrow_mut::<GuardEdge>()
+        {
             guard_edge.set_pulse(cx, guard_pulse_v);
         }
         let canvas_rect = canvas_ref.area().rect(cx);
@@ -1780,10 +2386,30 @@ impl App {
             let end_y = (cx_y + end.y as f64 - 22.0).clamp(cx_y + 8.0, cx_y + h - 24.0);
             self.set_view_abs(cx, ids!(start_marker_label_box), start_x, start_y);
             self.set_view_abs(cx, ids!(end_marker_label_box), end_x, end_y);
-            self.set_view_abs(cx, ids!(place_label_1_box), cx_x + w * 0.18, cx_y + h * 0.20);
-            self.set_view_abs(cx, ids!(place_label_2_box), cx_x + w * 0.55, cx_y + h * 0.42);
-            self.set_view_abs(cx, ids!(place_label_3_box), cx_x + w * 0.20, cx_y + h * 0.62);
-            self.set_view_abs(cx, ids!(place_label_4_box), cx_x + w * 0.78, cx_y + h * 0.80);
+            self.set_view_abs(
+                cx,
+                ids!(place_label_1_box),
+                cx_x + w * 0.18,
+                cx_y + h * 0.20,
+            );
+            self.set_view_abs(
+                cx,
+                ids!(place_label_2_box),
+                cx_x + w * 0.55,
+                cx_y + h * 0.42,
+            );
+            self.set_view_abs(
+                cx,
+                ids!(place_label_3_box),
+                cx_x + w * 0.20,
+                cx_y + h * 0.62,
+            );
+            self.set_view_abs(
+                cx,
+                ids!(place_label_4_box),
+                cx_x + w * 0.78,
+                cx_y + h * 0.80,
+            );
         }
 
         self.refresh_top_bar(cx);
@@ -1891,18 +2517,10 @@ impl App {
             .label(cx, ids!(hud_cad_value))
             .set_text(cx, &cad_text);
 
-        set_bar_ratio(
-            cx, &self.ui, ids!(hud_speed_bar), ids!(hud_speed_bar_fill), ids!(hud_speed_bar_rest), s_ratio,
-        );
-        set_bar_ratio(
-            cx, &self.ui, ids!(hud_hr_bar), ids!(hud_hr_bar_fill), ids!(hud_hr_bar_rest), hr_ratio,
-        );
-        set_bar_ratio(
-            cx, &self.ui, ids!(hud_ele_bar), ids!(hud_ele_bar_fill), ids!(hud_ele_bar_rest), ele_ratio,
-        );
-        set_bar_ratio(
-            cx, &self.ui, ids!(hud_cad_bar), ids!(hud_cad_bar_fill), ids!(hud_cad_bar_rest), cad_ratio,
-        );
+        set_progress_value(cx, &self.ui, ids!(hud_speed_bar), s_ratio);
+        set_progress_value(cx, &self.ui, ids!(hud_hr_bar), hr_ratio);
+        set_progress_value(cx, &self.ui, ids!(hud_ele_bar), ele_ratio);
+        set_progress_value(cx, &self.ui, ids!(hud_cad_bar), cad_ratio);
     }
 
     fn refresh_scrubber_labels(&mut self, cx: &mut Cx, track: &Track) {
@@ -1913,19 +2531,17 @@ impl App {
         self.ui
             .label(cx, ids!(current_time_label))
             .set_text(cx, &cur);
-        self.ui
-            .label(cx, ids!(total_time_label))
-            .set_text(cx, &tot);
+        self.ui.label(cx, ids!(total_time_label)).set_text(cx, &tot);
 
-        let track_view = self.ui.view(cx, ids!(scrubber_track));
-        let total = track_view.area().rect(cx).size.x as f32 - 12.0;
-        if total > 1.0 {
-            let walked_w = (total * self.state.playback_progress.clamp(0.0, 1.0)) as f64;
-            let walked_ref = self.ui.view(cx, ids!(scrubber_walked));
-            if let Some(mut v) = walked_ref.borrow_mut() {
-                v.walk.width = Size::Fixed(walked_w);
-            }
-            track_view.redraw(cx);
+        if let Some(mut slider) = self
+            .ui
+            .widget(cx, ids!(scrubber_slider))
+            .borrow_mut::<MpSlider>()
+        {
+            slider.set_single_value(
+                cx,
+                self.state.playback_progress.clamp(0.0, 1.0) as f64 * 100.0,
+            );
         }
     }
 
@@ -1938,28 +2554,56 @@ impl App {
     }
 
     fn refresh_pause_glyph(&mut self, cx: &mut Cx) {
-        let paused = self.state.is_paused;
-        self.ui.view(cx, ids!(pause_left_bar)).set_visible(cx, !paused);
-        self.ui.view(cx, ids!(pause_right_bar)).set_visible(cx, !paused);
+        let paused = self.state.is_paused || demo_stage() == Some(DemoStage::S0);
+        self.ui
+            .view(cx, ids!(pause_bars_group))
+            .set_visible(cx, !paused);
+        self.ui
+            .view(cx, ids!(pause_play_group))
+            .set_visible(cx, paused);
         self.ui
             .label(cx, ids!(pause_play_triangle))
-            .set_text(cx, if paused { "▶" } else { "" });
+            .set_text(cx, "▶");
         self.ui.view(cx, ids!(pause_button)).redraw(cx);
     }
 
     fn refresh_speed_buttons(&mut self, cx: &mut Cx) {
         let active = self.state.playback_speed.round() as i32;
-        for (path, val) in [
-            (ids!(speed_1x_button) as &[LiveId], 1),
-            (ids!(speed_4x_button) as &[LiveId], 4),
-            (ids!(speed_16x_button) as &[LiveId], 16),
+        for (visual_path, label_path, val) in [
+            (
+                ids!(speed_1x_visual) as &[LiveId],
+                ids!(speed_1x_label) as &[LiveId],
+                1,
+            ),
+            (
+                ids!(speed_4x_visual) as &[LiveId],
+                ids!(speed_4x_label) as &[LiveId],
+                4,
+            ),
+            (
+                ids!(speed_16x_visual) as &[LiveId],
+                ids!(speed_16x_label) as &[LiveId],
+                16,
+            ),
         ] {
-            let view = self.ui.view(cx, path);
-            let active_color = [0.290, 0.376, 0.851, 1.0];
+            let view = self.ui.view(cx, visual_path);
+            let active_color = [0.157, 0.780, 0.910, 1.0];
             let inactive_color = [0.078, 0.078, 0.110, 1.0];
-            let c = if val == active { active_color } else { inactive_color };
+            let c = if val == active {
+                active_color
+            } else {
+                inactive_color
+            };
             view.set_uniform(cx, live_id!(color), &c);
             view.redraw(cx);
+            self.ui.label(cx, label_path).set_text(
+                cx,
+                match val {
+                    1 => "1x",
+                    4 => "4x",
+                    _ => "16x",
+                },
+            );
         }
     }
 
@@ -1983,30 +2627,10 @@ impl App {
     }
 }
 
-fn set_bar_ratio(
-    cx: &mut Cx,
-    ui: &WidgetRef,
-    parent_id: &[LiveId],
-    fill_id: &[LiveId],
-    rest_id: &[LiveId],
-    ratio: f32,
-) {
-    let parent = ui.view(cx, parent_id);
-    let total = parent.area().rect(cx).size.x as f32;
-    if total < 1.0 {
-        return;
+fn set_progress_value(cx: &mut Cx, ui: &WidgetRef, progress_id: &[LiveId], ratio: f32) {
+    if let Some(mut progress) = ui.widget(cx, progress_id).borrow_mut::<MpProgress>() {
+        progress.set_value(cx, ratio.clamp(0.0, 1.0) as f64 * 100.0);
     }
-    let fill_w = (total * ratio.clamp(0.0, 1.0)) as f64;
-    let rest_w = (total as f64 - fill_w).max(0.0);
-    let fill_ref = ui.view(cx, fill_id);
-    if let Some(mut v) = fill_ref.borrow_mut() {
-        v.walk.width = Size::Fixed(fill_w);
-    }
-    let rest_ref = ui.view(cx, rest_id);
-    if let Some(mut v) = rest_ref.borrow_mut() {
-        v.walk.width = Size::Fixed(rest_w);
-    }
-    parent.redraw(cx);
 }
 
 fn format_mmss(total_secs: i64) -> String {
@@ -2027,22 +2651,34 @@ impl MatchEvent for App {
         self.phase = PHASE_SYNCING;
         self.phase_entered_secs = 0.0;
         self.last_now_secs = 0.0;
+        let frozen_s0 = demo_stage() == Some(DemoStage::S0);
+        self.state.is_paused = frozen_s0;
 
-        if let Ok(seek) = std::env::var("MOBILE_EXAMPLE_DEMO_SEEK") {
-            if let Ok(p) = seek.parse::<f32>() {
-                self.state.playback_progress = p.clamp(0.0, 0.999);
+        if !frozen_s0 {
+            if let Ok(seek) = std::env::var("MOBILE_EXAMPLE_DEMO_SEEK") {
+                if let Ok(p) = seek.parse::<f32>() {
+                    self.state.playback_progress = p.clamp(0.0, 0.999);
+                }
             }
         }
-        if let Some(t) = self.track.clone() {
-            let p0 = self.state.playback_progress;
-            self.state.apply_progress(&t, p0);
+        if !frozen_s0 {
+            if let Some(t) = self.track.clone() {
+                let p0 = self.state.playback_progress;
+                self.state.apply_progress(&t, p0);
+            }
         }
         self.compute_guard_window();
 
-        let (rx, tid) = spawn_fetch_worker();
-        self.network_rx = Some(rx);
-        self.worker_thread_id = Some(tid);
-        self.fetching_started_at_secs = None;
+        if frozen_s0 {
+            self.network_rx = None;
+            self.worker_thread_id = None;
+            self.fetching_started_at_secs = Some(0.0);
+        } else {
+            let (rx, tid) = spawn_fetch_worker();
+            self.network_rx = Some(rx);
+            self.worker_thread_id = Some(tid);
+            self.fetching_started_at_secs = None;
+        }
         self.pending_fetch = None;
         self.guard_card_visible = false;
         self.last_scrubber_drag_secs = -10.0;
@@ -2070,13 +2706,40 @@ impl MatchEvent for App {
         self.refresh_top_bar(cx);
         self.refresh_sync_overlay(cx);
         self.refresh_legend_max(cx);
+        self.refresh_pause_glyph(cx);
+        self.refresh_speed_buttons(cx);
+        if let Some(track) = self.track.clone() {
+            self.refresh_scrubber_labels(cx, &track);
+        }
         self.next_frame = cx.new_next_frame();
     }
 
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
-        if self.ui.button(cx, ids!(guard_dismiss_button)).clicked(actions) {
+        if self
+            .ui
+            .button(cx, ids!(guard_dismiss_button))
+            .clicked(actions)
+        {
             self.guard_card_visible = false;
             self.ui.view(cx, ids!(guard_card)).set_visible(cx, false);
+        }
+
+        if demo_stage() == Some(DemoStage::S0) {
+            return;
+        }
+
+        let slider_changed = self
+            .ui
+            .widget(cx, ids!(scrubber_slider))
+            .borrow::<MpSlider>()
+            .and_then(|slider| slider.changed(actions));
+        if let Some(SliderValue::Single(value)) = slider_changed {
+            if let Some(track) = self.track.clone() {
+                let p = (value / 100.0).clamp(0.0, 0.999) as f32;
+                self.state.apply_progress(&track, p);
+                self.last_scrubber_drag_secs = self.now_secs;
+                self.refresh_scrubber_labels(cx, &track);
+            }
         }
     }
 }
@@ -2086,8 +2749,8 @@ impl MatchEvent for App {
 // PC 上 cfg(not(android)) 直接返回 false, robius-android-env / jni crate 不参与 PC build.
 #[cfg(target_os = "android")]
 fn detect_android_reduced_motion() -> bool {
-    use robius_android_env::with_activity;
     use jni::objects::{JObject, JValue};
+    use robius_android_env::with_activity;
 
     with_activity(|env, activity| -> bool {
         // resolver = activity.getContentResolver()
@@ -2146,7 +2809,9 @@ impl AppMain for App {
             if ne.set.contains(&self.next_frame) {
                 let now = ne.time;
                 self.now_secs = now;
-                self.poll_network(cx, now);
+                if demo_stage() != Some(DemoStage::S0) {
+                    self.poll_network(cx, now);
+                }
                 self.maybe_advance_phase(cx, now);
                 self.next_frame = cx.new_next_frame();
             }
@@ -2154,7 +2819,7 @@ impl AppMain for App {
 
         let pause_area = self.ui.view(cx, ids!(pause_button)).area();
         if let Hit::FingerUp(fe) = event.hits(cx, pause_area) {
-            if fe.is_over && fe.was_tap() {
+            if fe.is_over && fe.was_tap() && demo_stage() != Some(DemoStage::S0) {
                 self.state.is_paused = !self.state.is_paused;
                 self.refresh_pause_glyph(cx);
             }
@@ -2184,36 +2849,11 @@ impl AppMain for App {
         ] {
             let area = self.ui.view(cx, path).area();
             if let Hit::FingerUp(fe) = event.hits(cx, area) {
-                if fe.is_over && fe.was_tap() {
+                if fe.is_over && fe.was_tap() && demo_stage() != Some(DemoStage::S0) {
                     self.state.playback_speed = speed;
                     self.refresh_speed_buttons(cx);
                 }
             }
-        }
-
-        let scrubber_area = self.ui.view(cx, ids!(scrubber_track)).area();
-        match event.hits(cx, scrubber_area) {
-            Hit::FingerDown(fe) => {
-                let r = scrubber_area.rect(cx);
-                if r.size.x > 1.0 {
-                    let p = ((fe.abs.x - r.pos.x) / r.size.x).clamp(0.0, 1.0) as f32;
-                    if let Some(t) = self.track.clone() {
-                        self.state.apply_progress(&t, p);
-                    }
-                    self.last_scrubber_drag_secs = self.now_secs;
-                }
-            }
-            Hit::FingerMove(fe) => {
-                let r = scrubber_area.rect(cx);
-                if r.size.x > 1.0 {
-                    let p = ((fe.abs.x - r.pos.x) / r.size.x).clamp(0.0, 1.0) as f32;
-                    if let Some(t) = self.track.clone() {
-                        self.state.apply_progress(&t, p);
-                    }
-                    self.last_scrubber_drag_secs = self.now_secs;
-                }
-            }
-            _ => {}
         }
 
         self.match_event(cx, event);
