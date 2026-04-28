@@ -142,6 +142,12 @@ MOBILE_EXAMPLE_DEMO_STAGE=S2 MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run
 - 2026-04-28 bottom controls alignment fix:
   - Screenshot showed the visible bottom controls shifted right because the row centered the speed buttons with a hidden 56px left spacer while also drawing the 48px pause button on the right.
   - Remove the spacer and make `speed_group` `width: Fit`; center the combined `speed_group + pause_button` cluster with `playback_controls_row.align.x = 0.5`.
+- 2026-04-28 S4 completion modal plan:
+  - Target is the user-provided compact completion dialog: small centered modal, dark translucent card, cyan success check, four dense summary rows, and a cancel button.
+  - Source-level port makepad-component `components/src/modal/modal.rs`: keep `MpModalContainer`, `MpModalBackdrop`, `MpModalSmall`, `MpModalBody`, and `MpModalFooter` semantics locally because direct dependency still risks Makepad branch mismatch.
+  - Replace the oversized current S4 stats card: width around 282px, title around 15.5px, row labels around 10.5px, values around 13px, row height around 34px. Avoid large 24px statistic typography.
+  - Avoid emoji icons that render inconsistently in the current font; use small monochrome glyphs (`•`, `○`, `↗`, `♥`) with metric colors.
+  - Add `取消` as a compact `MpButtonSmall`-style footer button. Tap hides `stats_overlay`; it should not mutate playback progress or stats data.
 
 **Existing demo env flags:**
 - `MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run` seeds replay progress for S2/S3/S4 data-linked stages.

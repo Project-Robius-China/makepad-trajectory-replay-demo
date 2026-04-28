@@ -513,6 +513,62 @@ script_mod! {
         draw_bg.radius: 24.
     }
 
+    // Local source-level port of makepad-component/components/src/modal/modal.rs.
+    // Keep the modal container/backdrop/body/footer naming and sizing semantics,
+    // but use RoundedView-compatible styling for this app's Makepad branch.
+    let MpModalBackdrop = View{
+        width: Fill
+        height: Fill
+        show_bg: true
+        draw_bg.color: #x00000066
+    }
+
+    let MpModalContainer = View{
+        width: Fill
+        height: Fill
+        flow: Overlay
+        align: Align{ x: 0.5 y: 0.45 }
+    }
+
+    let MpModalSmall = RoundedView{
+        width: 282
+        height: Fit
+        flow: Down
+        align: Align{ x: 0.5 }
+        spacing: 10
+        padding: Inset{ left: 14 right: 14 top: 14 bottom: 12 }
+        new_batch: true
+        draw_bg.color: #x111620E6
+        draw_bg.radius: 14.
+    }
+
+    let MpModalBody = View{
+        width: Fill
+        height: Fit
+        flow: Down
+        spacing: 6
+    }
+
+    let MpModalFooter = View{
+        width: Fill
+        height: Fit
+        flow: Right
+        spacing: 8
+        align: Align{ x: 1.0 y: 0.5 }
+    }
+
+    let MpStatsModalRow = RoundedView{
+        width: Fill
+        height: 34
+        flow: Right
+        spacing: 8
+        align: Align{ y: 0.5 }
+        padding: Inset{ left: 10 right: 10 top: 5 bottom: 5 }
+        new_batch: true
+        draw_bg.color: #x151B26A8
+        draw_bg.radius: 7.
+    }
+
     let PlaybackButtonBase = #(PlaybackButton::register_widget(vm))
     let PlaybackButton = set_type_default() do PlaybackButtonBase{
         width: 48
@@ -822,148 +878,124 @@ script_mod! {
                             }
                         }
 
-                        // stats_overlay (P12.0 升级 per visual.spec L444-465):
-                        // ✓ checkmark + "回放已完成" 标题 + 4 项单列垂直 + leading icons + frosted glass card.
-                        stats_overlay := View{
-                            width: Fill height: Fill
-                            flow: Down
-                            align: Center
-                            padding: Inset{ left: 32 right: 32 top: 32 bottom: 24 }
+                        // S4 completion modal: source-level port of makepad-component modal.rs,
+                        // tuned compactly for the mobile replay completion state.
+                        stats_overlay := MpModalContainer{
                             visible: false
 
-                            stats_card := RoundedView{
-                                width: Fit height: Fit
-                                flow: Down
-                                align: Center
-                                spacing: 10
-                                padding: Inset{ left: 28 right: 28 top: 18 bottom: 18 }
-                                new_batch: true
-                                draw_bg.color: #x14141Cd9
-                                draw_bg.radius: 12.
+                            stats_backdrop := MpModalBackdrop{}
 
+                            stats_card := MpModalSmall{
                                 stats_checkmark := RoundedView{
-                                    width: 32 height: 32
+                                    width: 30 height: 30
                                     align: Center
                                     new_batch: true
-                                    draw_bg.color: #x10B981
-                                    draw_bg.radius: 16.
+                                    draw_bg.color: #x102B3A
+                                    draw_bg.radius: 15.
                                     Label{
                                         text: "✓"
-                                        draw_text.color: #xFFFFFF
-                                        draw_text.text_style.font_size: 18
+                                        draw_text.color: #x28C7E8
+                                        draw_text.text_style.font_size: 17
                                     }
                                 }
 
                                 stats_title := Label{
+                                    width: Fit height: Fit
                                     text: "回放已完成"
                                     draw_text.color: #xF5F5FA
-                                    draw_text.text_style.font_size: 18
+                                    draw_text.text_style.font_size: 15.5
                                 }
 
-                                stat_distance_row := View{
-                                    width: Fit height: Fit
-                                    flow: Right
-                                    align: Align{ y: 0.5 }
-                                    spacing: 12
-                                    Label{
-                                        text: "📍"
-                                        draw_text.color: #x4A6CF7
-                                        draw_text.text_style.font_size: 14
-                                    }
-                                    View{
-                                        width: Fit height: Fit
-                                        flow: Down
-                                        spacing: 2
+                                stats_body := MpModalBody{
+                                    stat_distance_row := MpStatsModalRow{
                                         Label{
+                                            text: "•"
+                                            draw_text.color: #x28C7E8
+                                            draw_text.text_style.font_size: 16
+                                        }
+                                        Label{
+                                            width: Fill height: Fit
                                             text: "总距离"
-                                            draw_text.color: #x7A7B8C
-                                            draw_text.text_style.font_size: 11
+                                            draw_text.color: #xA2A6B8
+                                            draw_text.text_style.font_size: 10.5
                                         }
                                         stat_distance_value := Label{
+                                            width: Fit height: Fit
                                             text: "—"
                                             draw_text.color: #xF5F5FA
-                                            draw_text.text_style.font_size: 24
+                                            draw_text.text_style.font_size: 13
                                         }
                                     }
-                                }
 
-                                stat_duration_row := View{
-                                    width: Fit height: Fit
-                                    flow: Right
-                                    align: Align{ y: 0.5 }
-                                    spacing: 12
-                                    Label{
-                                        text: "⏱"
-                                        draw_text.color: #xFF8A3D
-                                        draw_text.text_style.font_size: 14
-                                    }
-                                    View{
-                                        width: Fit height: Fit
-                                        flow: Down
-                                        spacing: 2
+                                    stat_duration_row := MpStatsModalRow{
                                         Label{
+                                            text: "○"
+                                            draw_text.color: #xFF8A3D
+                                            draw_text.text_style.font_size: 14
+                                        }
+                                        Label{
+                                            width: Fill height: Fit
                                             text: "总时长"
-                                            draw_text.color: #x7A7B8C
-                                            draw_text.text_style.font_size: 11
+                                            draw_text.color: #xA2A6B8
+                                            draw_text.text_style.font_size: 10.5
                                         }
                                         stat_duration_value := Label{
+                                            width: Fit height: Fit
                                             text: "—"
                                             draw_text.color: #xF5F5FA
-                                            draw_text.text_style.font_size: 24
+                                            draw_text.text_style.font_size: 13
                                         }
                                     }
-                                }
 
-                                stat_climb_row := View{
-                                    width: Fit height: Fit
-                                    flow: Right
-                                    align: Align{ y: 0.5 }
-                                    spacing: 12
-                                    Label{
-                                        text: "↗"
-                                        draw_text.color: #x10B981
-                                        draw_text.text_style.font_size: 16
-                                    }
-                                    View{
-                                        width: Fit height: Fit
-                                        flow: Down
-                                        spacing: 2
+                                    stat_climb_row := MpStatsModalRow{
                                         Label{
+                                            text: "↗"
+                                            draw_text.color: #x10B981
+                                            draw_text.text_style.font_size: 14
+                                        }
+                                        Label{
+                                            width: Fill height: Fit
                                             text: "累计爬升"
-                                            draw_text.color: #x7A7B8C
-                                            draw_text.text_style.font_size: 11
+                                            draw_text.color: #xA2A6B8
+                                            draw_text.text_style.font_size: 10.5
                                         }
                                         stat_climb_value := Label{
+                                            width: Fit height: Fit
                                             text: "—"
                                             draw_text.color: #xF5F5FA
-                                            draw_text.text_style.font_size: 24
+                                            draw_text.text_style.font_size: 13
+                                        }
+                                    }
+
+                                    stat_avg_hr_row := MpStatsModalRow{
+                                        Label{
+                                            text: "♥"
+                                            draw_text.color: #xFF3B6E
+                                            draw_text.text_style.font_size: 14
+                                        }
+                                        Label{
+                                            width: Fill height: Fit
+                                            text: "平均心率"
+                                            draw_text.color: #xA2A6B8
+                                            draw_text.text_style.font_size: 10.5
+                                        }
+                                        stat_avg_hr_value := Label{
+                                            width: Fit height: Fit
+                                            text: "—"
+                                            draw_text.color: #xF5F5FA
+                                            draw_text.text_style.font_size: 13
                                         }
                                     }
                                 }
 
-                                stat_avg_hr_row := View{
-                                    width: Fit height: Fit
-                                    flow: Right
-                                    align: Align{ y: 0.5 }
-                                    spacing: 12
-                                    Label{
-                                        text: "♥"
-                                        draw_text.color: #xFF3B6E
-                                        draw_text.text_style.font_size: 16
-                                    }
-                                    View{
-                                        width: Fit height: Fit
-                                        flow: Down
-                                        spacing: 2
-                                        Label{
-                                            text: "平均心率"
-                                            draw_text.color: #x7A7B8C
+                                stats_footer := MpModalFooter{
+                                    stats_cancel_button := MpButtonSmall{
+                                        width: 64 height: 30
+                                        draw_bg.color: #x1B2230
+                                        stats_cancel_label := Label{
+                                            text: "取消"
+                                            draw_text.color: #xD4D5DD
                                             draw_text.text_style.font_size: 11
-                                        }
-                                        stat_avg_hr_value := Label{
-                                            text: "—"
-                                            draw_text.color: #xF5F5FA
-                                            draw_text.text_style.font_size: 24
                                         }
                                     }
                                 }
@@ -3091,6 +3123,13 @@ impl AppMain for App {
                 }
                 self.maybe_advance_phase(cx, now);
                 self.next_frame = cx.new_next_frame();
+            }
+        }
+
+        let stats_cancel_area = self.ui.view(cx, ids!(stats_cancel_button)).area();
+        if let Hit::FingerUp(fe) = event.hits(cx, stats_cancel_area) {
+            if fe.is_over && fe.was_tap() {
+                self.ui.view(cx, ids!(stats_overlay)).set_visible(cx, false);
             }
         }
 
