@@ -129,7 +129,7 @@ pub fn evict_if_needed() {
     collect_files_with_times(&tiles_dir, &mut files);
 
     // Sort by modification time (oldest first)
-    files.sort_by(|a, b| a.1.cmp(&b.1));
+    files.sort_by_key(|(_, time)| *time);
 
     // Delete oldest files until under limit
     let mut size = current_size;

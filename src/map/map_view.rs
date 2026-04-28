@@ -162,20 +162,20 @@ impl Widget for GeoMapView {
         // Handle HTTP responses for tile loading
         if let Event::NetworkResponses(responses) = event {
             for response in responses {
-                match response {
+                let tile_loaded = match response {
                     NetworkResponse::HttpResponse {
                         request_id,
                         response,
-                    } => {
-                        if self.tile_cache.handle_response(cx, *request_id, response) {
-                            // Tile loaded successfully, redraw
-                            self.area.redraw(cx);
-                        }
-                    }
+                    } => self.tile_cache.handle_response(cx, *request_id, response),
                     NetworkResponse::HttpError { request_id, error } => {
                         self.tile_cache.handle_error(*request_id, error);
+                        false
                     }
-                    _ => {}
+                    _ => false,
+                };
+                if tile_loaded {
+                    // Tile loaded successfully, redraw
+                    self.area.redraw(cx);
                 }
             }
         }
@@ -234,27 +234,25 @@ impl Widget for GeoMapView {
                 self.velocity_samples.clear();
                 self.velocity_samples.push((fe.abs, fe.time));
             }
-            Hit::FingerMove(fe) => {
+            Hit::FingerMove(fe) if self.initial_pinch_distance.is_none() => {
                 // Only handle panning if not pinching
-                if self.initial_pinch_distance.is_none() {
-                    if let (Some(start), Some((start_lng, start_lat))) =
-                        (self.drag_start, self.drag_start_center)
-                    {
-                        let delta = fe.abs - start;
-                        let (deg_per_px_x, deg_per_px_y) = self.degrees_per_pixel();
+                if let (Some(start), Some((start_lng, start_lat))) =
+                    (self.drag_start, self.drag_start_center)
+                {
+                    let delta = fe.abs - start;
+                    let (deg_per_px_x, deg_per_px_y) = self.degrees_per_pixel();
 
-                        self.center_lng = start_lng - delta.x * deg_per_px_x;
-                        self.center_lat = start_lat + delta.y * deg_per_px_y;
-                        self.normalize_coordinates();
+                    self.center_lng = start_lng - delta.x * deg_per_px_x;
+                    self.center_lat = start_lat + delta.y * deg_per_px_y;
+                    self.normalize_coordinates();
 
-                        self.last_abs = fe.abs;
-                        self.area.redraw(cx);
+                    self.last_abs = fe.abs;
+                    self.area.redraw(cx);
 
-                        // Add velocity sample (keep last 4)
-                        self.velocity_samples.push((fe.abs, fe.time));
-                        if self.velocity_samples.len() > 4 {
-                            self.velocity_samples.remove(0);
-                        }
+                    // Add velocity sample (keep last 4)
+                    self.velocity_samples.push((fe.abs, fe.time));
+                    if self.velocity_samples.len() > 4 {
+                        self.velocity_samples.remove(0);
                     }
                 }
             }

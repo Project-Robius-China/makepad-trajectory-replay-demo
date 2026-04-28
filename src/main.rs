@@ -416,21 +416,50 @@ script_mod! {
         }
     }
 
+    set_type_default() do #(DrawMapTone::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        tint_color: vec3(0.050, 0.095, 0.135)
+        edge_color: vec3(0.004, 0.006, 0.012)
+        border_color: vec3(0.000, 0.620, 0.720)
+
+        pixel: fn() {
+            let p = self.pos * self.rect_size
+            let edge_dist = min(min(p.x, self.rect_size.x - p.x), min(p.y, self.rect_size.y - p.y))
+            let inner = smoothstep(0.0, 18.0, edge_dist)
+            let edge = 1.0 - smoothstep(0.0, 72.0, edge_dist)
+            let border = 1.0 - smoothstep(0.0, 1.4, edge_dist)
+            let alpha = clamp(inner * 0.105 + edge * 0.16 + border * 0.20, 0.0, 0.32)
+            let color = mix(mix(self.tint_color, self.edge_color, edge * 0.60), self.border_color, border * 0.34)
+            return Pal.premul(vec4(color.x, color.y, color.z, alpha))
+        }
+    }
+
     set_type_default() do #(DrawMapTile::script_shader(vm)){
         ..mod.draw.DrawQuad
         tile_texture: texture_2d(float)
         has_texture: 0.0
         uv_offset: vec2(0.0, 0.0)
         uv_scale: vec2(1.0, 1.0)
+        map_contrast: 1.22
+        map_saturation: 0.62
+        feature_lift: 0.36
 
         pixel: fn() {
             if self.has_texture > 0.5 {
                 let uv = self.uv_offset + self.pos * self.uv_scale
-                return self.tile_texture.sample(uv)
+                let tex = self.tile_texture.sample(uv)
+                let rgb = vec3(tex.x, tex.y, tex.z)
+                let luma = dot(rgb, vec3(0.299, 0.587, 0.114))
+                let gray = vec3(luma, luma, luma)
+                let desat = mix(gray, rgb, self.map_saturation)
+                let base = (desat - vec3(0.075, 0.080, 0.095)) * self.map_contrast + vec3(0.112, 0.132, 0.168)
+                let feature = smoothstep(0.12, 0.32, luma)
+                let lifted = base + vec3(0.135, 0.185, 0.235) * feature * self.feature_lift
+                return Pal.premul(vec4(lifted.x, lifted.y, lifted.z, 1.0))
             }
             // P13.2: tile 加载占位 — 与 dark tile server (Carto Dark Matter) 自然过渡.
-            // 颜色取 bg_secondary #14141C ≈ vec4(0.078, 0.078, 0.110, 1.0).
-            return vec4(0.078, 0.078, 0.110, 1.0)
+            // 颜色取抬亮后的地图底色, 避免 placeholder 与 app 黑底融为一体.
+            return Pal.premul(vec4(0.112, 0.132, 0.168, 1.0))
         }
     }
 
@@ -1399,6 +1428,19 @@ pub struct DrawWater {
 
 #[derive(Script, ScriptHook)]
 #[repr(C)]
+pub struct DrawMapTone {
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    tint_color: Vec3,
+    #[live]
+    edge_color: Vec3,
+    #[live]
+    border_color: Vec3,
+}
+
+#[derive(Script, ScriptHook)]
+#[repr(C)]
 pub struct DrawMapGrid {
     #[deref]
     draw_super: DrawQuad,
@@ -1514,6 +1556,8 @@ pub struct TrackCanvas {
     // 锁定位置不交互 (per design B), 启动期 set_center / set_zoom 一次.
     #[live]
     draw_map_geo: GeoMapView,
+    #[live]
+    draw_map_tone: DrawMapTone,
     #[live]
     draw_particle: DrawParticle,
 
@@ -1700,6 +1744,7 @@ impl Widget for TrackCanvas {
             ..Default::default()
         };
         let _ = self.draw_map_geo.draw_walk(cx, &mut Scope::empty(), map_walk);
+        self.draw_map_tone.draw_abs(cx, rect);
 
         if let Some(geom) = self.geom.as_ref() {
             if !geom.segs.is_empty() {
@@ -2081,9 +2126,10 @@ impl TrackCanvas {
                 let b = &t.stats.track_bounds;
                 let center_lng = (b.lon_min + b.lon_max) * 0.5;
                 let center_lat = (b.lat_min + b.lat_max) * 0.5;
-                // zoom 简化用固定 13 (适合 city scale 骑行轨迹); 精确 zoom 计算留 P13.3
+                // P13.3: zoom 12 (city scale, 与 scripts/preload_tiles.sh 预下载范围一致).
+                // demo 启动时 GeoMapView 优先读 disk_cache zoom 12 tiles, 演示场景断网也能显示.
                 self.draw_map_geo.set_center(cx, center_lng, center_lat);
-                self.draw_map_geo.set_zoom(cx, 13.0);
+                self.draw_map_geo.set_zoom(cx, 12.0);
             }
             self.area.redraw(cx);
         }
@@ -3048,6 +3094,7 @@ fn format_mmss(total_secs: i64) -> String {
 
 impl MatchEvent for App {
     fn handle_startup(&mut self, cx: &mut Cx) {
+        ensure_bundled_tiles_to_cache();
         self.ensure_bundled_track();
         self.user = UserProfile::default();
         self.state = PlaybackState::default();
@@ -3184,6 +3231,55 @@ impl MatchEvent for App {
                     self.enter_phase(cx, PHASE_STATS, self.now_secs);
                 }
             }
+        }
+    }
+}
+
+// P13.4: 启动期把 assets/map_tiles/ 里 bundled OSM dark tiles 拷贝到 disk_cache.
+// demo 即使无网 / 全新设备 / cache 被清空 / community reviewer 第一次 clone repo 跑, 都能立刻
+// 看到地图 (而不需先跑 scripts/preload_tiles.sh). dev mode 用 CARGO_MANIFEST_DIR
+// (release distribution 必须 ship assets/ 一起).
+fn ensure_bundled_tiles_to_cache() {
+    let assets_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("assets/map_tiles/12");
+    if !assets_dir.exists() {
+        return;
+    }
+    let Some(cache_root) = crate::map::disk_cache::cache_dir() else {
+        return;
+    };
+    let cache_dir = cache_root.join("tiles/12");
+    let Ok(x_entries) = std::fs::read_dir(&assets_dir) else {
+        return;
+    };
+    for x_entry in x_entries.flatten() {
+        let x_path = x_entry.path();
+        if !x_path.is_dir() {
+            continue;
+        }
+        let Some(x_name) = x_path.file_name().map(|s| s.to_owned()) else {
+            continue;
+        };
+        let cache_x_dir = cache_dir.join(&x_name);
+        if std::fs::create_dir_all(&cache_x_dir).is_err() {
+            continue;
+        }
+        let Ok(y_entries) = std::fs::read_dir(&x_path) else {
+            continue;
+        };
+        for y_entry in y_entries.flatten() {
+            let y_path = y_entry.path();
+            if y_path.extension().is_none_or(|e| e != "png") {
+                continue;
+            }
+            let Some(y_name) = y_path.file_name() else {
+                continue;
+            };
+            let dst = cache_x_dir.join(y_name);
+            if dst.exists() {
+                continue;
+            }
+            let _ = std::fs::copy(&y_path, &dst);
         }
     }
 }

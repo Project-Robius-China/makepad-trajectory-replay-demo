@@ -171,6 +171,11 @@ MOBILE_EXAMPLE_DEMO_STAGE=S2 MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run
   - Treat the button as one explicit state machine: initial/paused -> play icon, active playback -> pause icon, completed/S4 -> replay icon.
   - S2/S3 demo playback and normal playback after path drawing should start paused so tapping the button is what starts playback.
   - When completed, tapping replay resets progress to 0, hides the stats modal, restores the replay labels/right controls, and leaves playback paused with the play icon. The next tap starts playback.
+- 2026-04-28 map background integration review:
+  - GeoMapView integration direction is correct: draw the dark OSM tile map as the first layer inside `TrackCanvas`, then draw route glow, particles, start/end markers, and current halo above it.
+  - Current contrast issue is expected with Carto Dark Matter tiles because the tile base and app shell both sit near `#0A0A0F/#14141C`; without a map-specific tone layer the map blends into the black background.
+  - Keep the map dark so S2 route glow remains dominant, but add two separation passes: tint/contrast the tile shader toward blue-gray with subtle feature lift, then draw a low-alpha full-map tone/edge overlay before route rendering.
+  - Do not reintroduce the old grid/water fake map. The real tile map is the base; shader tuning should make it readable without competing with the route.
 
 **Existing demo env flags:**
 - `MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run` seeds replay progress for S2/S3/S4 data-linked stages.
