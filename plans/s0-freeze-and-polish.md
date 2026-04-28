@@ -152,6 +152,25 @@ MOBILE_EXAMPLE_DEMO_STAGE=S2 MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run
   - After `取消`, the modal may be hidden while the app remains in `PHASE_STATS`.
   - If the user scrubs below `STATS_PROGRESS_THRESHOLD`, switch back to `PHASE_PLAYBACK`, restore route labels/right controls, and keep the modal hidden. This re-arms completion.
   - If progress later reaches the threshold again, enter `PHASE_STATS` normally so the completion modal appears again.
+- 2026-04-28 route viewport bounds fix:
+  - Screenshot near completion shows the north/finish side of the route exceeding the visible map area.
+  - Root cause: `TrackCanvas::ensure_geom` projected the GPX bounds with a uniform 24px padding, which is too small for the top finish label, current-position halo, route glow, and marker radius.
+  - Replace the uniform padding with asymmetric safe insets: larger top padding, moderate left/right/bottom padding. This zooms the route out slightly and keeps completion/end-state visuals inside the map canvas.
+- 2026-04-28 S4 completion icon SVG:
+  - Use the user-added `assets/已完成2.svg` as the modal completion icon instead of a font checkmark.
+  - Keep the icon at 30px so the modal remains compact; preserve the SVG's original blue fill unless screenshots show it needs tinting.
+  - Keep playback button SVG conversion as a separate follow-up: use three SVG icons for play, pause, and replay, with visibility switched by playback state instead of shader-drawing the glyphs.
+- 2026-04-28 playback button SVG conversion:
+  - Use downloaded assets `black24gl-playCircle.svg`, `20gl-pauseCircle.svg`, and `shuaxin.svg` for play, pause, and replay icons.
+  - Keep the circular button shell in Makepad shader/SDF so the hit area, radius, and component proportions remain stable; draw the selected SVG centered inside the shell.
+  - Button state mapping: paused/S0 shows play, active playback shows pause, S4/completed state shows replay. Tapping replay restarts progress from 0 and returns to playback.
+- 2026-04-28 playback/speed button bug fix:
+  - The downloaded play/pause SVG files include their own outer circles, which double up with the Makepad circular button shell and create jagged small-scale rings. Replace those assets with glyph-only SVGs while keeping the same file names and resource bindings.
+  - Speed selector state must update both the pill background and label color. On this Makepad 2.0 branch, keep `ViewRef::set_uniform(live_id!(color), ...)` for `speed_*_visual` and directly set `Label.draw_text.color`, then redraw the speed group.
+- 2026-04-28 playback button state-machine fix:
+  - Treat the button as one explicit state machine: initial/paused -> play icon, active playback -> pause icon, completed/S4 -> replay icon.
+  - S2/S3 demo playback and normal playback after path drawing should start paused so tapping the button is what starts playback.
+  - When completed, tapping replay resets progress to 0, hides the stats modal, restores the replay labels/right controls, and leaves playback paused with the play icon. The next tap starts playback.
 
 **Existing demo env flags:**
 - `MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run` seeds replay progress for S2/S3/S4 data-linked stages.

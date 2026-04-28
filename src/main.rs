@@ -23,6 +23,10 @@ const PHASE_PATH_DRAW: i32 = 1;
 const PHASE_PLAYBACK: i32 = 2;
 const PHASE_STATS: i32 = 3;
 
+const PLAYBACK_ICON_PLAY: i32 = 0;
+const PLAYBACK_ICON_PAUSE: i32 = 1;
+const PLAYBACK_ICON_REPLAY: i32 = 2;
+
 const PATH_DRAW_DURATION_SECS: f64 = 3.0;
 const STATS_PROGRESS_THRESHOLD: f32 = 0.99;
 const GUARD_PULSE_DURATION_SECS: f64 = 1.5;
@@ -76,6 +80,16 @@ fn demo_seek(default: f32) -> f32 {
         std::env::var("MOBILE_EXAMPLE_DEMO_SEEK").ok().as_deref(),
         default,
     )
+}
+
+fn playback_icon_mode(phase: i32, is_paused: bool, progress: f32, frozen: bool) -> i32 {
+    if phase == PHASE_STATS || progress >= STATS_PROGRESS_THRESHOLD {
+        PLAYBACK_ICON_REPLAY
+    } else if is_paused || frozen {
+        PLAYBACK_ICON_PLAY
+    } else {
+        PLAYBACK_ICON_PAUSE
+    }
 }
 
 app_main!(App);
@@ -217,8 +231,6 @@ script_mod! {
         ..mod.draw.DrawQuad
         bg_color: vec3(0.05, 0.06, 0.09)
         border_color: vec3(0.28, 0.29, 0.36)
-        icon_color: vec3(0.96, 0.96, 0.98)
-        mode: 0.0
 
         pixel: fn() {
             let sdf = Sdf2d.viewport(self.pos * self.rect_size)
@@ -230,25 +242,6 @@ script_mod! {
             sdf.fill(vec4(self.bg_color.x, self.bg_color.y, self.bg_color.z, 1.0))
             sdf.circle(c.x, c.y, radius - 0.5)
             sdf.stroke(vec4(self.border_color.x, self.border_color.y, self.border_color.z, 1.0), 1.5)
-
-            let play = step(self.mode, 0.5)
-
-            if play > 0.5 {
-                let s = min(sz.x, sz.y) * 0.24
-                sdf.move_to(c.x - s * 0.35, c.y - s)
-                sdf.line_to(c.x - s * 0.35, c.y + s)
-                sdf.line_to(c.x + s * 0.95, c.y)
-                sdf.close_path()
-                sdf.fill(vec4(self.icon_color.x, self.icon_color.y, self.icon_color.z, 1.0))
-            } else {
-                let h = min(sz.x, sz.y) * 0.38
-                let w = max(3.0, min(sz.x, sz.y) * 0.10)
-                let gap = min(sz.x, sz.y) * 0.11
-                sdf.box(c.x - gap - w, c.y - h * 0.5, w, h, w * 0.5)
-                sdf.fill_keep(vec4(self.icon_color.x, self.icon_color.y, self.icon_color.z, 1.0))
-                sdf.box(c.x + gap, c.y - h * 0.5, w, h, w * 0.5)
-                sdf.fill(vec4(self.icon_color.x, self.icon_color.y, self.icon_color.z, 1.0))
-            }
 
             return sdf.result
         }
@@ -573,6 +566,18 @@ script_mod! {
     let PlaybackButton = set_type_default() do PlaybackButtonBase{
         width: 48
         height: 48
+        draw_play_icon +: {
+            svg: crate_resource("self:assets/black24gl-playCircle.svg")
+            color: #xF5F5FA
+        }
+        draw_pause_icon +: {
+            svg: crate_resource("self:assets/20gl-pauseCircle.svg")
+            color: #xF5F5FA
+        }
+        draw_replay_icon +: {
+            svg: crate_resource("self:assets/shuaxin.svg")
+            color: #xF5F5FA
+        }
     }
 
     startup() do #(App::script_component(vm)){
@@ -886,16 +891,10 @@ script_mod! {
                             stats_backdrop := MpModalBackdrop{}
 
                             stats_card := MpModalSmall{
-                                stats_checkmark := RoundedView{
+                                stats_checkmark := Svg{
                                     width: 30 height: 30
-                                    align: Center
-                                    new_batch: true
-                                    draw_bg.color: #x102B3A
-                                    draw_bg.radius: 15.
-                                    Label{
-                                        text: "✓"
-                                        draw_text.color: #x28C7E8
-                                        draw_text.text_style.font_size: 17
+                                    draw_svg +: {
+                                        svg: crate_resource("self:assets/已完成2.svg")
                                     }
                                 }
 
@@ -1414,10 +1413,6 @@ pub struct DrawPlaybackButton {
     bg_color: Vec3,
     #[live]
     border_color: Vec3,
-    #[live]
-    icon_color: Vec3,
-    #[live]
-    mode: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1538,6 +1533,14 @@ pub struct PlaybackButton {
     #[redraw]
     #[live]
     draw_button: DrawPlaybackButton,
+    #[live]
+    draw_play_icon: DrawSvg,
+    #[live]
+    draw_pause_icon: DrawSvg,
+    #[live]
+    draw_replay_icon: DrawSvg,
+    #[rust]
+    icon_mode: i32,
 
     #[area]
     #[rust]
@@ -1932,18 +1935,21 @@ impl TrackCanvas {
         let lon_span = ((lon_max - lon_min) * cos_lat).max(1e-6);
         let lat_span = (lat_max - lat_min).max(1e-6);
 
-        let pad: f32 = 24.0;
-        let avail_w = (rect_size.x - pad * 2.0).max(1.0);
-        let avail_h = (rect_size.y - pad * 2.0).max(1.0);
+        let pad_left: f32 = 52.0;
+        let pad_right: f32 = 52.0;
+        let pad_top: f32 = 74.0;
+        let pad_bottom: f32 = 50.0;
+        let avail_w = (rect_size.x - pad_left - pad_right).max(1.0);
+        let avail_h = (rect_size.y - pad_top - pad_bottom).max(1.0);
         let scale = (avail_w as f64 / lon_span).min(avail_h as f64 / lat_span);
         let mapped_w = (lon_span * scale) as f32;
         let mapped_h = (lat_span * scale) as f32;
-        let off_x = pad + (avail_w - mapped_w) * 0.5;
-        let off_y = pad + (avail_h - mapped_h) * 0.5;
+        let off_x = pad_left + (avail_w - mapped_w) * 0.5;
+        let off_bottom = pad_bottom + (avail_h - mapped_h) * 0.5;
 
         let project = |lat: f64, lon: f64| -> Vec2 {
             let x = off_x + ((lon - lon_min) * cos_lat * scale) as f32;
-            let y = rect_size.y - off_y - ((lat - lat_min) * scale) as f32;
+            let y = rect_size.y - off_bottom - ((lat - lat_min) * scale) as f32;
             vec2(x, y)
         };
 
@@ -2113,14 +2119,28 @@ impl Widget for PlaybackButton {
         cx.begin_turtle(walk, self.layout);
         let rect = cx.turtle().rect();
         self.draw_button.draw_abs(cx, rect);
+        let icon_size = rect.size.x.min(rect.size.y) * 0.58;
+        let icon_rect = Rect {
+            pos: rect.pos
+                + dvec2(
+                    (rect.size.x - icon_size) * 0.5,
+                    (rect.size.y - icon_size) * 0.5,
+                ),
+            size: dvec2(icon_size, icon_size),
+        };
+        match self.icon_mode {
+            PLAYBACK_ICON_PAUSE => self.draw_pause_icon.draw_abs(cx, icon_rect),
+            PLAYBACK_ICON_REPLAY => self.draw_replay_icon.draw_abs(cx, icon_rect),
+            _ => self.draw_play_icon.draw_abs(cx, icon_rect),
+        }
         cx.end_turtle_with_area(&mut self.area);
         DrawStep::done()
     }
 }
 
 impl PlaybackButton {
-    pub fn set_playing(&mut self, cx: &mut Cx, playing: bool) {
-        self.draw_button.mode = if playing { 1.0 } else { 0.0 };
+    pub fn set_icon_mode(&mut self, cx: &mut Cx, icon_mode: i32) {
+        self.icon_mode = icon_mode;
         self.area.redraw(cx);
     }
 }
@@ -2707,13 +2727,18 @@ impl App {
     }
 
     fn enter_phase(&mut self, cx: &mut Cx, phase: i32, now: f64) {
+        let previous_phase = self.phase;
         self.phase = phase;
         self.phase_entered_secs = now;
         match phase {
             PHASE_PATH_DRAW => {
                 self.ui.view(cx, ids!(sync_overlay)).set_visible(cx, false);
             }
+            PHASE_PLAYBACK if previous_phase == PHASE_PATH_DRAW => {
+                self.state.is_paused = true;
+            }
             PHASE_STATS => {
+                self.state.is_paused = true;
                 if let Some(track) = self.track.as_ref().cloned() {
                     self.fill_stats(cx, &track);
                 }
@@ -2723,6 +2748,7 @@ impl App {
             }
             _ => {}
         }
+        self.refresh_pause_glyph(cx);
     }
 
     fn update_guard(&mut self, cx: &mut Cx, _track: &Track, now: f64) {
@@ -2837,18 +2863,27 @@ impl App {
     }
 
     fn refresh_pause_glyph(&mut self, cx: &mut Cx) {
-        let paused = self.state.is_paused || demo_stage() == Some(DemoStage::S0);
+        let icon_mode = playback_icon_mode(
+            self.phase,
+            self.state.is_paused,
+            self.state.playback_progress,
+            demo_stage() == Some(DemoStage::S0),
+        );
         if let Some(mut button) = self
             .ui
             .widget(cx, ids!(pause_button))
             .borrow_mut::<PlaybackButton>()
         {
-            button.set_playing(cx, !paused);
+            button.set_icon_mode(cx, icon_mode);
         }
     }
 
     fn refresh_speed_buttons(&mut self, cx: &mut Cx) {
         let active = self.state.playback_speed.round() as i32;
+        let active_bg = [0.157, 0.780, 0.910, 1.0];
+        let inactive_bg = [0.078, 0.078, 0.110, 1.0];
+        let active_text = vec4(1.0, 1.0, 1.0, 1.0);
+        let inactive_text = vec4(0.831, 0.835, 0.867, 1.0);
         for (visual_path, label_path, val) in [
             (
                 ids!(speed_1x_visual) as &[LiveId],
@@ -2867,24 +2902,38 @@ impl App {
             ),
         ] {
             let view = self.ui.view(cx, visual_path);
-            let active_color = [0.157, 0.780, 0.910, 1.0];
-            let inactive_color = [0.078, 0.078, 0.110, 1.0];
-            let c = if val == active {
-                active_color
+            let (bg, text_color) = if val == active {
+                (&active_bg, active_text)
             } else {
-                inactive_color
+                (&inactive_bg, inactive_text)
             };
-            view.set_uniform(cx, live_id!(color), &c);
+            view.set_uniform(cx, live_id!(color), bg);
             view.redraw(cx);
-            self.ui.label(cx, label_path).set_text(
-                cx,
-                match val {
-                    1 => "1x",
-                    4 => "4x",
-                    _ => "16x",
-                },
-            );
+            let label_text = match val {
+                1 => "1x",
+                4 => "4x",
+                _ => "16x",
+            };
+            if let Some(mut label) = self.ui.widget(cx, label_path).borrow_mut::<Label>() {
+                label.draw_text.color = text_color;
+                label.set_text(cx, label_text);
+            }
         }
+        self.ui.view(cx, ids!(speed_group)).redraw(cx);
+    }
+
+    fn reset_playback_to_initial(&mut self, cx: &mut Cx, track: &Track) {
+        self.state.is_paused = true;
+        self.state.apply_progress(track, 0.0);
+        self.phase = PHASE_PLAYBACK;
+        self.phase_entered_secs = self.now_secs;
+        self.ui.view(cx, ids!(stats_overlay)).set_visible(cx, false);
+        self.ui.view(cx, ids!(label_overlay)).set_visible(cx, true);
+        self.ui.view(cx, ids!(right_overlay)).set_visible(cx, true);
+        self.refresh_hud(cx, track);
+        self.refresh_scrubber_labels(cx, track);
+        self.refresh_pause_glyph(cx);
+        self.ui.widget(cx, ids!(track_canvas)).redraw(cx);
     }
 
     fn fill_stats(&mut self, cx: &mut Cx, track: &Track) {
@@ -2942,6 +2991,7 @@ impl MatchEvent for App {
             Some(stage @ (DemoStage::S2 | DemoStage::S3)) => {
                 self.state.network_state = NetworkState::Fallback;
                 self.state.data_source = DataSource::LocalFallback;
+                self.state.is_paused = true;
                 self.phase = PHASE_PLAYBACK;
                 self.state.playback_progress = demo_seek(stage.default_seek());
             }
@@ -3144,8 +3194,16 @@ impl AppMain for App {
         let pause_area = self.ui.view(cx, ids!(pause_button)).area();
         if let Hit::FingerUp(fe) = event.hits(cx, pause_area) {
             if fe.is_over && fe.was_tap() && demo_stage() != Some(DemoStage::S0) {
-                self.state.is_paused = !self.state.is_paused;
-                self.refresh_pause_glyph(cx);
+                if self.phase == PHASE_STATS
+                    || self.state.playback_progress >= STATS_PROGRESS_THRESHOLD
+                {
+                    if let Some(track) = self.track.clone() {
+                        self.reset_playback_to_initial(cx, &track);
+                    }
+                } else {
+                    self.state.is_paused = !self.state.is_paused;
+                    self.refresh_pause_glyph(cx);
+                }
             }
         }
 
@@ -3209,5 +3267,29 @@ mod tests {
         assert_close(parse_demo_seek(Some("1.0"), 0.25), 0.999);
         assert_close(parse_demo_seek(Some("bad"), 0.25), 0.25);
         assert_close(parse_demo_seek(None, 0.25), 0.25);
+    }
+
+    #[test]
+    fn derives_playback_icon_from_state() {
+        assert_eq!(
+            playback_icon_mode(PHASE_PLAYBACK, true, 0.25, false),
+            PLAYBACK_ICON_PLAY
+        );
+        assert_eq!(
+            playback_icon_mode(PHASE_PLAYBACK, false, 0.25, false),
+            PLAYBACK_ICON_PAUSE
+        );
+        assert_eq!(
+            playback_icon_mode(PHASE_PLAYBACK, false, STATS_PROGRESS_THRESHOLD, false),
+            PLAYBACK_ICON_REPLAY
+        );
+        assert_eq!(
+            playback_icon_mode(PHASE_STATS, true, 0.5, false),
+            PLAYBACK_ICON_REPLAY
+        );
+        assert_eq!(
+            playback_icon_mode(PHASE_PLAYBACK, false, 0.25, true),
+            PLAYBACK_ICON_PLAY
+        );
     }
 }
