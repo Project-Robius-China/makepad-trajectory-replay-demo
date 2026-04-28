@@ -70,10 +70,83 @@
 - In S0 frozen mode the circular button must show a centered play triangle, not pause bars. Use separate overlay groups for pause bars and play glyph so hidden pause bars do not affect play glyph layout.
 - Keep S0 interactions visually inert: pause/speed/scrubber clicks should not mutate the frozen screenshot state.
 
+**2026-04-28 bottom visual-test fix:**
+- Observed issue: bottom time labels were `font_size: 12` with fixed widths 43/51, causing `00:00` and `651:08` to wrap onto two lines.
+- Adjust bottom labels and speed button labels to `font_size: 10.5`, and widen time label columns so `00:00` / `651:08` remain single-line.
+- Do not use font glyphs for the play icon. The current font rendered `▶` incorrectly. Use `xor-shader-techniques` style cheap SDF geometry: one filled triangle for play and two rounded bars for pause.
+
+**2026-04-28 data-linkage unlock:**
+- User asked to stop inspecting the play button and open the replay data linkage before moving to the next visual stage.
+- Implement demo stages `S2`, `S3`, and `S4` as app-level states, not widget-local hacks.
+- `S2` starts directly in `PHASE_PLAYBACK`, hides `sync_overlay`, uses bundled track data, applies `MOBILE_EXAMPLE_DEMO_SEEK` or default `0.50`, and lets playback advance so HUD, route progress, slider, and time labels share one `PlaybackState`.
+- `S3` starts like S2 but forces the contract guard window without needing `MOBILE_EXAMPLE_DEMO_GUARD=1`; default seek is `0.40`.
+- `S4` starts directly in `PHASE_STATS`, applies default seek `0.998`, fills stats from the same track, hides route labels/right controls, and keeps canvas progress complete under the stats overlay.
+- Scrubber drag outside S0 must immediately call `PlaybackState::apply_progress`, then refresh HUD and scrubber labels; the next frame paints route progress from the same state.
+- S0 remains frozen and inert: no network worker, no phase advance, no HUD data application.
+
+**2026-04-28 S2 pixel-polish start:**
+- Next screen to tune is `S2`, not `S3`/`S4`, because S2 defines the reusable baseline for route canvas, HUD density, top bar, bottom controls, and live data linkage.
+- S2 reference anchor: `design/refs/v2/s2-main-replay.png`, plus current user screenshots. Use it for density and hierarchy, but keep later user decisions that made the bottom scrubber a two-row control rail.
+- Do not change the accepted HUD metric cards in this pass: speed, heart rate, elevation, cadence card content and general proportions are locked unless a new screenshot review calls out a specific defect.
+- Do not continue play-button icon debugging in this pass. The button can remain as the current shader widget while S2 data/layout is validated.
+- All visible card/control surfaces in S2 must still be source-level ports from `/Users/zhaoyue/workspace/matrix/Component/makepad-component`: `MpCardSmall`, `MpCardChip`, `MpProgress`, `MpSlider`, `MpButtonSmall`.
+- S2 operator command:
+
+```bash
+MOBILE_EXAMPLE_DEMO_STAGE=S2 MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run
+```
+
+- First S2 adjustment batch:
+  1. Ensure first playback frame does not jump because of a large initial `NextFrame` delta.
+  2. Keep S2/S3/S4 off the network worker and immediately apply bundled track data.
+  3. Keep the scrubber/time/HUD/route linked to the same progress value after drag or autoplay.
+  4. Keep time labels single-line and bottom content centered within the mobile rail.
+- S2 scrubber visual batch: align the local `MpSlider` port closer to makepad-component semantics with cyan primary fill, white thumb, cyan thumb border, and a light shadow. This is a component-source adjustment, not an ad-hoc control.
+- 2026-04-28 S2 route shader review:
+  - Current S2 route has two unwanted dot sources: procedural dot noise in `DrawTrack.pixel` and CPU-side instanced `DrawParticle` scatter in `TrackCanvas::draw_walk`.
+  - User clarified Image #2 is the target: a dark-map running/replay path with a thin continuous orange-to-cyan luminous line, broad but soft glow, and no visible point array.
+  - Replace the particle/dot look with a continuous Xor-inspired SDF glow shader: multi-width capsule bands, cheap exponential glow, warm orange to cyan progress gradient, cyan replay head, and no discrete particles.
+  - Make the route smoother by increasing the GPX-to-screen segment budget and applying one Chaikin smoothing pass after projection. Do not fake smoothness with dots.
+  - Preserve S0 placeholder behavior as a faint smooth route.
+- 2026-04-28 S2 particle correction:
+  - User asked to add the particle effect back, using `$xor-shader-techniques` and `$makepad-2.0-shaders`, to reach the stronger target visual.
+  - Keep `DrawTrack` as the continuous route/glow layer. Add `DrawParticle` back as a separate single instanced draw layer, not per-particle widgets.
+  - Particle placement uses Xor-style cheap deterministic chaos: integer hash + golden-ratio seed/twinkle, sparse scatter around the route normal, brighter and larger near the current replay head.
+  - `particle_density` remains a shader uniform for the spec contract and is driven by current speed normalization. Reduced-motion sets density to `0.0`.
+  - Avoid the previous uniform bead-chain look: particles should read as energetic sparks/flow around the route, not source sample dots.
+- 2026-04-28 S2 second screenshot tuning:
+  - Current render is structurally close but too brown/dim; cyan exists mostly at the current halo instead of reading as the main electric path.
+  - Bias the speed ramp toward `speed_high` earlier while preserving low/mid/high token visibility, then boost route glow brightness without widening the line into a fog band.
+  - Increase particle visibility using a visual density floor while keeping the `particle_density` uniform speed-driven and reduced-motion-gated.
+  - Narrow particle scatter so sparks sit on/near the route instead of becoming a broad cloud.
+- 2026-04-28 S2 third screenshot tuning:
+  - Current route still reads as a thick brown ribbon; particles are visible but the route base dominates.
+  - Shrink the core/ribbon/glow radii, lower brown ribbon alpha, and bias the emissive layer toward `speed_high` so the path reads as electric cyan/orange line instead of muddy trail.
+  - Keep particles unchanged for this pass because the issue is the base route layer overpowering them.
+- 2026-04-28 S2 fourth screenshot tuning:
+  - Latest screenshot still needs more separation from the target: reduce the broad warm/brown body further and make the route read as a thin white-cyan electrical core with a short cyan tail near the replay head.
+  - Replace the wide `ribbon` contribution with a narrower `inner` line, lower unwalked alpha, and let orange stay as a warm inner accent instead of the dominant band.
+  - Rework particles into a randomly thinned spark layer: smaller average dots, tighter normal scatter, occasional outliers, and stronger brightness near the replay head. This follows `$xor-shader-techniques` cheap deterministic chaos without returning to uniform bead-chain dots.
+- 2026-04-28 S2 fifth screenshot tuning:
+  - New screenshot shows the path has improved color but still reads as a bright bead chain; the large cyan head bloom also pulls too much attention.
+  - Make the continuous route layer carry the visual: reduce core/inner/glow/aura radii and alpha, shorten the cyan tail window, and lower head-specific glow.
+  - Move particles from "whole walked path decoration" to "head-local energy": lower total particle count, aggressively thin particles away from the replay head, reduce average particle size/alpha, and keep only sparse outlier sparks along the route.
+- 2026-04-28 S2 sixth screenshot tuning:
+  - User feedback: current shape is good; route light effect can be brighter.
+  - Keep radii and particle distribution unchanged so the path does not widen or return to a bead-chain look.
+  - Increase only emissive intensity/alpha: brighter cyan aura, stronger SDF glow, clearer white-cyan core, and slightly stronger replay-head highlight.
+- 2026-04-28 S2 seventh screenshot tuning:
+  - Latest screenshot confirms brightness is closer, but capsule overlap still creates slight knotting along the route and the replay-head area is near the upper limit.
+  - Keep geometry, radii, smoothing, and particle distribution unchanged.
+  - Shift brightness from core/inner line to softer glow/aura: increase diffuse cyan emission while lowering core/inner/head alpha so joints look smoother and less segmented.
+- 2026-04-28 bottom controls alignment fix:
+  - Screenshot showed the visible bottom controls shifted right because the row centered the speed buttons with a hidden 56px left spacer while also drawing the 48px pause button on the right.
+  - Remove the spacer and make `speed_group` `width: Fit`; center the combined `speed_group + pause_button` cluster with `playback_controls_row.align.x = 0.5`.
+
 **Existing demo env flags:**
-- `MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run` freezes near S2/S4 progress positions.
+- `MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run` seeds replay progress for S2/S3/S4 data-linked stages.
 - `MOBILE_EXAMPLE_DEMO_GUARD=1 MOBILE_EXAMPLE_DEMO_SEEK=0.40 cargo run` helps trigger S3.
-- No S0 freeze flag exists yet.
+- `MOBILE_EXAMPLE_DEMO_STAGE=S0` freezes the sync state for pixel review.
 
 ---
 
@@ -95,7 +168,7 @@ MOBILE_EXAMPLE_DEMO_STAGE=S3 MOBILE_EXAMPLE_DEMO_GUARD=1 MOBILE_EXAMPLE_DEMO_SEE
 MOBILE_EXAMPLE_DEMO_STAGE=S4 MOBILE_EXAMPLE_DEMO_SEEK=0.998 cargo run
 ```
 
-Only implement S0 in this plan. Reserve S2/S3/S4 stage names so the workflow stays consistent.
+S0 is the frozen sync screen. S2/S3/S4 are now wired as data-linked operator stages so visual testing can move screen by screen without waiting on network timing.
 
 ---
 

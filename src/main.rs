@@ -29,16 +29,53 @@ const GUARD_PULSE_DURATION_SECS: f64 = 1.5;
 const SCRUBBER_ECHO_FADE_SECS: f64 = 0.4;
 const SUCCESS_LABEL_VISIBLE_SECS: f64 = 0.9;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DemoStage {
     S0,
+    S2,
+    S3,
+    S4,
+}
+
+impl DemoStage {
+    fn default_seek(self) -> f32 {
+        match self {
+            DemoStage::S0 => 0.0,
+            DemoStage::S2 => 0.50,
+            DemoStage::S3 => 0.40,
+            DemoStage::S4 => 0.998,
+        }
+    }
 }
 
 fn demo_stage() -> Option<DemoStage> {
-    match std::env::var("MOBILE_EXAMPLE_DEMO_STAGE").ok().as_deref() {
-        Some("S0") | Some("s0") => Some(DemoStage::S0),
+    std::env::var("MOBILE_EXAMPLE_DEMO_STAGE")
+        .ok()
+        .as_deref()
+        .and_then(parse_demo_stage)
+}
+
+fn parse_demo_stage(value: &str) -> Option<DemoStage> {
+    match value.trim().to_ascii_uppercase().as_str() {
+        "S0" => Some(DemoStage::S0),
+        "S2" => Some(DemoStage::S2),
+        "S3" => Some(DemoStage::S3),
+        "S4" => Some(DemoStage::S4),
         _ => None,
     }
+}
+
+fn parse_demo_seek(raw: Option<&str>, default: f32) -> f32 {
+    raw.and_then(|value| value.parse::<f32>().ok())
+        .unwrap_or(default)
+        .clamp(0.0, 0.999)
+}
+
+fn demo_seek(default: f32) -> f32 {
+    parse_demo_seek(
+        std::env::var("MOBILE_EXAMPLE_DEMO_SEEK").ok().as_deref(),
+        default,
+    )
 }
 
 app_main!(App);
@@ -132,7 +169,7 @@ script_mod! {
         progress_start: 0.0
         progress_end: 0.0
         track_color: vec3(0.23, 0.23, 0.28)
-        fill_color: vec3(0.42, 0.44, 0.50)
+        fill_color: vec3(0.157, 0.780, 0.910)
 
         pixel: fn() {
             let sdf = Sdf2d.viewport(self.pos * self.rect_size)
@@ -160,15 +197,59 @@ script_mod! {
 
     set_type_default() do #(DrawMpSliderThumb::script_shader(vm)){
         ..mod.draw.DrawQuad
-        thumb_color: vec3(0.36, 0.37, 0.42)
-        border_color: vec3(0.36, 0.37, 0.42)
+        thumb_color: vec3(1.0, 1.0, 1.0)
+        border_color: vec3(0.157, 0.780, 0.910)
 
         pixel: fn() {
             let sdf = Sdf2d.viewport(self.pos * self.rect_size)
             let c = self.rect_size * 0.5
-            sdf.circle(c.x, c.y, min(c.x, c.y) - 1.0)
+            sdf.circle(c.x + 1.5, c.y + 1.5, min(c.x, c.y) - 2.0)
+            sdf.fill(vec4(0.0, 0.0, 0.0, 0.20))
+            sdf.circle(c.x, c.y, min(c.x, c.y) - 2.0)
             sdf.fill(vec4(self.thumb_color.x, self.thumb_color.y, self.thumb_color.z, 1.0))
-            sdf.stroke(vec4(self.border_color.x, self.border_color.y, self.border_color.z, 1.0), 1.0)
+            sdf.circle(c.x, c.y, min(c.x, c.y) - 2.0)
+            sdf.stroke(vec4(self.border_color.x, self.border_color.y, self.border_color.z, 1.0), 2.0)
+            return sdf.result
+        }
+    }
+
+    set_type_default() do #(DrawPlaybackButton::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        bg_color: vec3(0.05, 0.06, 0.09)
+        border_color: vec3(0.28, 0.29, 0.36)
+        icon_color: vec3(0.96, 0.96, 0.98)
+        mode: 0.0
+
+        pixel: fn() {
+            let sdf = Sdf2d.viewport(self.pos * self.rect_size)
+            let sz = self.rect_size
+            let c = sz * 0.5
+            let radius = min(c.x, c.y) - 1.25
+
+            sdf.circle(c.x, c.y, radius)
+            sdf.fill(vec4(self.bg_color.x, self.bg_color.y, self.bg_color.z, 1.0))
+            sdf.circle(c.x, c.y, radius - 0.5)
+            sdf.stroke(vec4(self.border_color.x, self.border_color.y, self.border_color.z, 1.0), 1.5)
+
+            let play = step(self.mode, 0.5)
+
+            if play > 0.5 {
+                let s = min(sz.x, sz.y) * 0.24
+                sdf.move_to(c.x - s * 0.35, c.y - s)
+                sdf.line_to(c.x - s * 0.35, c.y + s)
+                sdf.line_to(c.x + s * 0.95, c.y)
+                sdf.close_path()
+                sdf.fill(vec4(self.icon_color.x, self.icon_color.y, self.icon_color.z, 1.0))
+            } else {
+                let h = min(sz.x, sz.y) * 0.38
+                let w = max(3.0, min(sz.x, sz.y) * 0.10)
+                let gap = min(sz.x, sz.y) * 0.11
+                sdf.box(c.x - gap - w, c.y - h * 0.5, w, h, w * 0.5)
+                sdf.fill_keep(vec4(self.icon_color.x, self.icon_color.y, self.icon_color.z, 1.0))
+                sdf.box(c.x + gap, c.y - h * 0.5, w, h, w * 0.5)
+                sdf.fill(vec4(self.icon_color.x, self.icon_color.y, self.icon_color.z, 1.0))
+            }
+
             return sdf.result
         }
     }
@@ -191,7 +272,7 @@ script_mod! {
         ..mod.draw.DrawQuad
         track_progress: 0.
         polyline_color_mix: 0.
-        particle_density: 0.5
+        particle_density: 0.0
         elevation_z: 0.
         guard_pulse_phase: 0.
         walked_segment_ratio: 0.
@@ -215,36 +296,53 @@ script_mod! {
         }
 
         speed_color: fn(s: float) -> vec3 {
-            let c1 = mix(self.speed_low, self.speed_mid, clamp(s * 2., 0., 1.))
-            let c2 = mix(self.speed_mid, self.speed_high, clamp((s - 0.5) * 2., 0., 1.))
-            return mix(c1, c2, step(0.5, s))
+            let low_mid = smoothstep(0.02, 0.32, s)
+            let mid_high = smoothstep(0.34, 0.76, s)
+            let c1 = mix(self.speed_low, self.speed_mid, low_mid)
+            let c2 = mix(self.speed_mid, self.speed_high, mid_high)
+            return mix(c1, c2, step(0.34, s))
         }
 
         pixel: fn() {
             let p = self.pos * self.rect_size
-            let line_w = 4.0
-            let glow_w = 12.0
-            let d = self.capsule_sdf(p, self.start_xy, self.end_xy, line_w)
-            let alpha = clamp(0.5 - d, 0., 1.)
             let t_mid = (self.t_a + self.t_b) * 0.5
             let s_mid = (self.speed_a + self.speed_b) * 0.5
             let walked = step(t_mid, self.walked_segment_ratio)
-            let walked_color = self.speed_color(s_mid)
-            let unwalked_color = self.unwalked
-            let base = mix(unwalked_color, walked_color, walked)
-            let glow_d = self.capsule_sdf(p, self.start_xy, self.end_xy, glow_w)
-            let glow = exp(-max(glow_d, 0.0) * 0.4) * 0.55 * walked
-            // 粒子 dot noise (xor 技法, B5): 沿已走段 capsule zone 内随时间流动.
-            // particle_density=0 时自动消失 (B2 reduced-motion 联动).
-            let p_zone_d = self.capsule_sdf(p, self.start_xy, self.end_xy, 16.0)
-            let in_zone = step(p_zone_d, 0.0) * walked
-            let drift = vec2(self.draw_pass.time * 2.0, 0.0)
-            let n = fract(sin(dot(floor(p * 0.4 + drift), vec2(12.9898, 78.233))) * 43758.5)
-            let particle_visible = step(1.0 - self.particle_density * 0.04, n) * in_zone
-            let particle_color = walked_color * 1.4
-            let final_rgb = base + walked_color * glow + particle_color * particle_visible
-            let final_a = alpha + glow * 0.3 * (1. - alpha) + particle_visible * 0.7 * (1. - alpha) * (1. - glow * 0.3)
-            let placeholder_a = alpha * 0.24
+            let speed_col = self.speed_color(s_mid)
+            let trail_cyan = smoothstep(self.walked_segment_ratio - 0.22, self.walked_segment_ratio, t_mid) * walked
+            let speed_cyan = smoothstep(0.20, 0.62, s_mid)
+            let electric_mix = max(trail_cyan * 0.78, speed_cyan * 0.48)
+            let electric_col = mix(speed_col, self.speed_high, electric_mix)
+            let warm_col = mix(self.speed_mid, speed_col, speed_cyan * 0.35)
+            let speed_energy = 0.92 + 0.46 * max(s_mid, trail_cyan)
+            let lit_col = mix(warm_col, electric_col, 0.54 + trail_cyan * 0.30) * mix(0.96, 1.48, walked)
+
+            let core_d = self.capsule_sdf(p, self.start_xy, self.end_xy, 0.42)
+            let inner_d = self.capsule_sdf(p, self.start_xy, self.end_xy, 0.78)
+            let glow_d = self.capsule_sdf(p, self.start_xy, self.end_xy, 3.7)
+            let aura_d = self.capsule_sdf(p, self.start_xy, self.end_xy, 7.2)
+            let core = clamp(0.5 - core_d, 0.0, 1.0) * walked
+            let inner = clamp(0.5 - inner_d, 0.0, 1.0) * walked
+            let glow = exp(-max(glow_d, 0.0) * 0.66) * mix(0.034, 0.90, walked)
+            let aura = exp(-max(aura_d, 0.0) * 0.38) * mix(0.014, 0.22, walked)
+            let unwalked_d = self.capsule_sdf(p, self.start_xy, self.end_xy, 0.78)
+            let unwalked_alpha = clamp(0.5 - unwalked_d, 0.0, 1.0) * (1.0 - walked) * 0.09
+            let head = smoothstep(self.walked_segment_ratio - 0.026, self.walked_segment_ratio, t_mid) * walked
+            let head_color = mix(electric_col, self.speed_high, head)
+
+            let final_rgb =
+                self.unwalked * unwalked_alpha * 0.8 +
+                self.speed_high * aura * (0.56 + trail_cyan * 0.40) +
+                head_color * glow * speed_energy * (1.18 + trail_cyan * 0.52) +
+                lit_col * inner * 0.32 +
+                vec3(1.0, 0.98, 0.90) * core * 0.74 +
+                self.speed_high * head * glow * 1.34
+            let final_a = clamp(
+                unwalked_alpha + aura * 0.075 + glow * 0.32 + inner * 0.10 + core * 0.48 + head * 0.06,
+                0.0,
+                1.0
+            )
+            let placeholder_a = clamp(0.5 - unwalked_d, 0.0, 1.0) * 0.24
             let placeholder = step(0.5, self.sync_placeholder)
             let display_rgb = mix(final_rgb, vec3(0.48, 0.48, 0.55), placeholder)
             let display_a = mix(final_a, placeholder_a, placeholder)
@@ -305,16 +403,21 @@ script_mod! {
         }
     }
 
-    // P12.1 B5: DrawParticle 离散粒子 shader (SDF dot + smoothstep AA, makepad-2.0-shaders pattern)
     set_type_default() do #(DrawParticle::script_shader(vm)){
         ..mod.draw.DrawQuad
-        particle_color: vec3(1., 0.541, 0.239)
-        particle_alpha: 0.7
+        particle_color: vec3(0.0, 0.898, 1.0)
+        particle_alpha: 0.65
+        particle_seed: 0.0
 
         pixel: fn() {
-            let d = length(self.pos - vec2(0.5, 0.5))
-            let alpha = 1.0 - smoothstep(0.35, 0.5, d)
-            return Pal.premul(vec4(self.particle_color * alpha * self.particle_alpha, alpha * self.particle_alpha))
+            let p = self.pos - vec2(0.5, 0.5)
+            let d = length(p)
+            let twinkle = 0.62 + 0.38 * sin(self.draw_pass.time * 8.5 + self.particle_seed)
+            let core = 1.0 - smoothstep(0.01, 0.13, d)
+            let halo = exp(-max(d - 0.04, 0.0) * 7.5) * (1.0 - smoothstep(0.40, 0.54, d))
+            let alpha = clamp((core * 1.0 + halo * 0.68) * self.particle_alpha * twinkle, 0.0, 1.0)
+            let rgb = self.particle_color * (core * 1.70 + halo * 1.05) * twinkle
+            return Pal.premul(vec4(rgb.x, rgb.y, rgb.z, alpha))
         }
     }
 
@@ -408,6 +511,12 @@ script_mod! {
         new_batch: true
         draw_bg.color: #x1F1F2C
         draw_bg.radius: 24.
+    }
+
+    let PlaybackButtonBase = #(PlaybackButton::register_widget(vm))
+    let PlaybackButton = set_type_default() do PlaybackButtonBase{
+        width: 48
+        height: 48
     }
 
     startup() do #(App::script_component(vm)){
@@ -1006,7 +1115,7 @@ script_mod! {
                         draw_bg.color: #x0A0A0F
 
                         bottom_content := View{
-                            width: 340 height: Fit
+                            width: 356 height: Fit
                             flow: Down
                             spacing: 10
 
@@ -1017,25 +1126,25 @@ script_mod! {
                                 align: Align{ y: 0.5 }
 
                                 current_time_label := Label{
-                                    width: 43 height: Fit
+                                    width: 58 height: Fit
                                     text: "00:00"
                                     draw_text.color: #xF5F5FA
-                                    draw_text.text_style.font_size: 12
+                                    draw_text.text_style.font_size: 10.5
                                 }
 
                                 scrubber_slider := MpSlider{
                                     width: Fill height: 48
                                     draw_track.track_color: vec3(0.23, 0.23, 0.28)
-                                    draw_track.fill_color: vec3(0.42, 0.44, 0.50)
-                                    draw_thumb.thumb_color: vec3(0.36, 0.37, 0.42)
-                                    draw_thumb.border_color: vec3(0.36, 0.37, 0.42)
+                                    draw_track.fill_color: vec3(0.157, 0.780, 0.910)
+                                    draw_thumb.thumb_color: vec3(1.0, 1.0, 1.0)
+                                    draw_thumb.border_color: vec3(0.157, 0.780, 0.910)
                                 }
 
                                 total_time_label := Label{
-                                    width: 51 height: Fit
+                                    width: 74 height: Fit
                                     text: "00:00"
                                     draw_text.color: #xD4D5DD
-                                    draw_text.text_style.font_size: 12
+                                    draw_text.text_style.font_size: 10.5
                                 }
                             }
 
@@ -1043,12 +1152,10 @@ script_mod! {
                                 width: Fill height: Fit
                                 flow: Right
                                 spacing: 10
-                                align: Align{ y: 0.5 }
-
-                                View{ width: 56 height: 48 }
+                                align: Align{ x: 0.5 y: 0.5 }
 
                                 speed_group := View{
-                                    width: Fill height: Fit
+                                    width: Fit height: Fit
                                     flow: Right
                                     spacing: 10
                                     align: Align{ x: 0.5 y: 0.5 }
@@ -1062,7 +1169,7 @@ script_mod! {
                                             speed_1x_label := Label{
                                                 text: "1x"
                                                 draw_text.color: #xD4D5DD
-                                                draw_text.text_style.font_size: 12
+                                                draw_text.text_style.font_size: 10.5
                                             }
                                         }
                                     }
@@ -1076,7 +1183,7 @@ script_mod! {
                                             speed_4x_label := Label{
                                                 text: "4x"
                                                 draw_text.color: #xFFFFFF
-                                                draw_text.text_style.font_size: 12
+                                                draw_text.text_style.font_size: 10.5
                                             }
                                         }
                                     }
@@ -1089,51 +1196,13 @@ script_mod! {
                                             speed_16x_label := Label{
                                                 text: "16x"
                                                 draw_text.color: #xD4D5DD
-                                                draw_text.text_style.font_size: 12
+                                                draw_text.text_style.font_size: 10.5
                                             }
                                         }
                                     }
                                 }
 
-                                // pause_button: outer hit area + makepad-component button-style circular visual.
-                                pause_button := View{
-                                    width: 56 height: 56
-                                    align: Center
-                                    new_batch: true
-                                    pause_visual := MpButtonCircle{
-                                        width: 52 height: 52
-                                        flow: Overlay
-                                        draw_bg.color: #x10121B
-                                        draw_bg.radius: 26.
-                                        pause_bars_group := View{
-                                            width: Fill height: Fill
-                                            flow: Right
-                                            spacing: 5
-                                            align: Center
-                                            pause_left_bar := RoundedView{
-                                                width: 4 height: 14
-                                                new_batch: true
-                                                draw_bg.color: #xF5F5FA
-                                                draw_bg.radius: 1.
-                                            }
-                                            pause_right_bar := RoundedView{
-                                                width: 4 height: 14
-                                                new_batch: true
-                                                draw_bg.color: #xF5F5FA
-                                                draw_bg.radius: 1.
-                                            }
-                                        }
-                                        pause_play_group := View{
-                                            width: Fill height: Fill
-                                            align: Align{ x: 0.54 y: 0.5 }
-                                            pause_play_triangle := Label{
-                                                text: "▶"
-                                                draw_text.color: #xF5F5FA
-                                                draw_text.text_style.font_size: 22
-                                            }
-                                        }
-                                    }
-                                }
+                                pause_button := PlaybackButton{}
                             }
                         }
                     }
@@ -1217,6 +1286,19 @@ pub struct DrawGuardEdge {
 
 #[derive(Script, ScriptHook)]
 #[repr(C)]
+pub struct DrawParticle {
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    particle_color: Vec3,
+    #[live]
+    particle_alpha: f32,
+    #[live]
+    particle_seed: f32,
+}
+
+#[derive(Script, ScriptHook)]
+#[repr(C)]
 pub struct DrawWater {
     #[deref]
     draw_super: DrawQuad,
@@ -1291,6 +1373,21 @@ pub struct DrawMpSliderThumb {
     border_color: Vec3,
 }
 
+#[derive(Script, ScriptHook)]
+#[repr(C)]
+pub struct DrawPlaybackButton {
+    #[deref]
+    draw_super: DrawQuad,
+    #[live]
+    bg_color: Vec3,
+    #[live]
+    border_color: Vec3,
+    #[live]
+    icon_color: Vec3,
+    #[live]
+    mode: f32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SliderValue {
     Single(f64),
@@ -1308,18 +1405,6 @@ pub enum MpSliderAction {
     Changed(SliderValue),
     #[default]
     None,
-}
-
-// P12.1 B5 升级: 离散粒子 instanced rendering (per spec.spec L209: 1000-2000 粒子)
-#[derive(Script, ScriptHook)]
-#[repr(C)]
-pub struct DrawParticle {
-    #[deref]
-    draw_super: DrawQuad,
-    #[live]
-    particle_color: Vec3,
-    #[live]
-    particle_alpha: f32,
 }
 
 #[derive(Script, ScriptHook, Widget)]
@@ -1410,6 +1495,24 @@ pub struct SyncSpinner {
 }
 
 #[derive(Script, ScriptHook, Widget)]
+pub struct PlaybackButton {
+    #[uid]
+    uid: WidgetUid,
+    #[walk]
+    walk: Walk,
+    #[layout]
+    layout: Layout,
+
+    #[redraw]
+    #[live]
+    draw_button: DrawPlaybackButton,
+
+    #[area]
+    #[rust]
+    area: Area,
+}
+
+#[derive(Script, ScriptHook, Widget)]
 pub struct MpProgress {
     #[uid]
     uid: WidgetUid,
@@ -1480,6 +1583,13 @@ struct TrackSegment {
     speed_b: f32,
 }
 
+#[derive(Clone, Copy)]
+struct TrackNode {
+    pos: Vec2,
+    t: f32,
+    speed: f32,
+}
+
 impl Widget for TrackCanvas {
     fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {}
 
@@ -1527,56 +1637,80 @@ impl Widget for TrackCanvas {
                 self.draw_track.end_many_instances(cx);
 
                 if !self.sync_placeholder {
-                    // P12.1 B5: 离散粒子 instanced rendering 1500 粒子 (per spec.spec L209: 1000-2000).
-                    // 沿 walked segments 采样位置, golden angle scatter, walked_color by speed.
-                    // particle_density (DrawTrack uniform) reduced_motion=0 时 procedural 粒子消失,
-                    // 离散粒子可见性由 walked_ratio 推进决定.
-                    self.draw_particle.begin_many_instances(cx);
-                    let total_particles: usize = 1500;
-                    let golden_angle: f32 = 2.399_963_1;
-                    let scatter_radius: f32 = 6.0;
-                    for i in 0..total_particles {
-                        let phase_norm = i as f32 / total_particles as f32;
-                        if phase_norm > self.walked_ratio {
-                            continue;
+                    let density = self.draw_track.particle_density.clamp(0.0, 1.0);
+                    if density > 0.001 && self.walked_ratio > 0.001 {
+                        self.draw_particle.begin_many_instances(cx);
+                        let visual_density = 0.22 + density * 0.58;
+                        let total_particles = (620.0 + visual_density * 760.0) as usize;
+                        let walked = self.walked_ratio.clamp(0.0, 1.0);
+                        for i in 0..total_particles {
+                            let seed = i as u32;
+                            let phase_jitter = hash01(seed.wrapping_mul(3).wrapping_add(1));
+                            let phase = (((i as f32 + phase_jitter * 1.70)
+                                / total_particles as f32)
+                                * walked)
+                                .min(walked);
+                            let seg_idx = ((phase * segs.len() as f32) as usize)
+                                .min(segs.len().saturating_sub(1));
+                            let seg = &segs[seg_idx];
+                            let local_t = hash01(seed.wrapping_mul(5).wrapping_add(2));
+                            let base = vec2(
+                                seg.start.x + (seg.end.x - seg.start.x) * local_t,
+                                seg.start.y + (seg.end.y - seg.start.y) * local_t,
+                            );
+                            let tangent = seg.end - seg.start;
+                            let len = tangent.length().max(1e-3);
+                            let normal = vec2(-tangent.y / len, tangent.x / len);
+                            let side = hash01(seed.wrapping_mul(7).wrapping_add(3)) * 2.0 - 1.0;
+                            let head_distance = (walked - phase).max(0.0);
+                            let head_boost = 1.0 - (head_distance / 0.20).clamp(0.0, 1.0);
+                            let flow_boost = 1.0 - (head_distance / 0.36).clamp(0.0, 1.0);
+                            let spark = hash01(seed.wrapping_mul(13).wrapping_add(5));
+                            let keep_roll = hash01(seed.wrapping_mul(17).wrapping_add(6));
+                            if keep_roll > 0.08 + flow_boost * 0.12 + head_boost * 0.56 + visual_density * 0.06 {
+                                continue;
+                            }
+                            let outlier = smoothstep01(
+                                0.88,
+                                1.0,
+                                hash01(seed.wrapping_mul(19).wrapping_add(7)),
+                            );
+                            let scatter = hash01(seed.wrapping_mul(11).wrapping_add(4)).powf(2.2)
+                                * (1.0 + visual_density * 3.8)
+                                + outlier * (2.2 + visual_density * 2.4);
+                            let particle_pos = base + normal * side * scatter;
+                            let particle_size = 1.1
+                                + spark.powf(1.7) * 1.45
+                                + head_boost * (1.2 + visual_density * 1.8);
+                            let alpha = (0.10
+                                + spark.powf(0.7) * 0.22
+                                + flow_boost * 0.08
+                                + head_boost * 0.46)
+                                * visual_density;
+                            if alpha < 0.04 {
+                                continue;
+                            }
+                            let speed = (seg.speed_a + seg.speed_b) * 0.5;
+                            self.draw_particle.particle_color = mix_vec3(
+                                speed_ramp_color(speed),
+                                vec3(0.0, 0.898, 1.0),
+                                (flow_boost * 0.35 + head_boost * 0.55).clamp(0.0, 0.9),
+                            );
+                            self.draw_particle.particle_alpha = alpha.min(1.0);
+                            self.draw_particle.particle_seed = seed as f32 * 1.618_034;
+                            self.draw_particle.draw_abs(
+                                cx,
+                                Rect {
+                                    pos: dvec2(
+                                        particle_pos.x as f64 - particle_size as f64 * 0.5,
+                                        particle_pos.y as f64 - particle_size as f64 * 0.5,
+                                    ),
+                                    size: dvec2(particle_size as f64, particle_size as f64),
+                                },
+                            );
                         }
-                        let seg_idx = ((phase_norm * segs.len() as f32) as usize)
-                            .min(segs.len().saturating_sub(1));
-                        let seg = &segs[seg_idx];
-                        let scatter_angle = (i as f32) * golden_angle;
-                        let scatter_x = scatter_angle.cos() * scatter_radius;
-                        let scatter_y = scatter_angle.sin() * scatter_radius;
-                        let mid_x = (seg.start.x + seg.end.x) * 0.5 + scatter_x;
-                        let mid_y = (seg.start.y + seg.end.y) * 0.5 + scatter_y;
-                        let speed = (seg.speed_a + seg.speed_b) * 0.5;
-                        let speed_norm = (speed / 12.0).clamp(0.0, 1.0);
-                        let color = if speed_norm < 0.5 {
-                            let t = speed_norm * 2.0;
-                            vec3(
-                                0.91 * (1.0 - t) + 1.0 * t,
-                                0.91 * (1.0 - t) + 0.541 * t,
-                                0.94 * (1.0 - t) + 0.239 * t,
-                            )
-                        } else {
-                            let t = (speed_norm - 0.5) * 2.0;
-                            vec3(
-                                1.0 * (1.0 - t),
-                                0.541 * (1.0 - t) + 0.898 * t,
-                                0.239 * (1.0 - t) + 1.0 * t,
-                            )
-                        };
-                        let psize: f64 = 3.0;
-                        self.draw_particle.particle_color = color;
-                        self.draw_particle.particle_alpha = 0.7;
-                        self.draw_particle.draw_abs(
-                            cx,
-                            Rect {
-                                pos: dvec2(mid_x as f64 - psize * 0.5, mid_y as f64 - psize * 0.5),
-                                size: dvec2(psize, psize),
-                            },
-                        );
+                        self.draw_particle.end_many_instances(cx);
                     }
-                    self.draw_particle.end_many_instances(cx);
 
                     let marker_size: f64 = 14.0;
                     let marker_rect = |p: Vec2| Rect {
@@ -1673,6 +1807,73 @@ fn lerp_segments(segs: &[TrackSegment], ratio: f32) -> Option<Vec2> {
     Some(segs.last().unwrap().end)
 }
 
+fn hash01(mut x: u32) -> f32 {
+    x ^= x >> 16;
+    x = x.wrapping_mul(0x7feb_352d);
+    x ^= x >> 15;
+    x = x.wrapping_mul(0x846c_a68b);
+    x ^= x >> 16;
+    (x as f32) * (1.0 / u32::MAX as f32)
+}
+
+fn mix_vec3(a: Vec3, b: Vec3, t: f32) -> Vec3 {
+    let t = t.clamp(0.0, 1.0);
+    vec3(
+        a.x * (1.0 - t) + b.x * t,
+        a.y * (1.0 - t) + b.y * t,
+        a.z * (1.0 - t) + b.z * t,
+    )
+}
+
+fn smoothstep01(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0).max(1e-6)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn speed_ramp_color(speed: f32) -> Vec3 {
+    let low = vec3(0.91, 0.91, 0.94);
+    let mid = vec3(1.0, 0.541, 0.239);
+    let high = vec3(0.0, 0.898, 1.0);
+    if speed < 0.34 {
+        mix_vec3(low, mid, smoothstep01(0.02, 0.32, speed))
+    } else {
+        mix_vec3(mid, high, smoothstep01(0.34, 0.76, speed))
+    }
+}
+
+fn smooth_track_nodes(nodes: &[TrackNode]) -> Vec<TrackNode> {
+    if nodes.len() < 3 {
+        return nodes.to_vec();
+    }
+
+    let mut out = Vec::with_capacity(nodes.len() * 2);
+    out.push(nodes[0]);
+    for pair in nodes.windows(2) {
+        let a = pair[0];
+        let b = pair[1];
+        let q = TrackNode {
+            pos: vec2(
+                a.pos.x * 0.75 + b.pos.x * 0.25,
+                a.pos.y * 0.75 + b.pos.y * 0.25,
+            ),
+            t: a.t * 0.75 + b.t * 0.25,
+            speed: a.speed * 0.75 + b.speed * 0.25,
+        };
+        let r = TrackNode {
+            pos: vec2(
+                a.pos.x * 0.25 + b.pos.x * 0.75,
+                a.pos.y * 0.25 + b.pos.y * 0.75,
+            ),
+            t: a.t * 0.25 + b.t * 0.75,
+            speed: a.speed * 0.25 + b.speed * 0.75,
+        };
+        out.push(q);
+        out.push(r);
+    }
+    out.push(*nodes.last().unwrap());
+    out
+}
+
 impl TrackCanvas {
     fn ensure_geom(&mut self, rect: Rect) {
         let rect_size = vec2(rect.size.x as f32, rect.size.y as f32);
@@ -1715,7 +1916,7 @@ impl TrackCanvas {
         };
 
         let n = track.points.len();
-        let target_segs: usize = 420;
+        let target_segs: usize = 520;
         let stride = (n / target_segs).max(1);
         let mut indices: Vec<usize> = (0..n).step_by(stride).collect();
         if *indices.last().unwrap() != n - 1 {
@@ -1726,25 +1927,29 @@ impl TrackCanvas {
         let normalize = |s: f32| ((s - speed_lo) / (speed_hi - speed_lo)).clamp(0.0, 1.0);
 
         let total_n = (n - 1).max(1) as f32;
-        let mut segs: Vec<TrackSegment> = Vec::with_capacity(indices.len().saturating_sub(1));
-        for i in 0..indices.len().saturating_sub(1) {
-            let ia = indices[i];
-            let ib = indices[i + 1];
-            let pa = &track.points[ia];
-            let pb = &track.points[ib];
-            let start = project(pa.lat, pa.lon);
-            let end = project(pb.lat, pb.lon);
-            let speed_a = normalize(pa.speed_mps.unwrap_or(0.0));
-            let speed_b = normalize(pb.speed_mps.unwrap_or(0.0));
-            let t_a = ia as f32 / total_n;
-            let t_b = ib as f32 / total_n;
+        let nodes: Vec<TrackNode> = indices
+            .iter()
+            .map(|idx| {
+                let point = &track.points[*idx];
+                TrackNode {
+                    pos: project(point.lat, point.lon),
+                    t: *idx as f32 / total_n,
+                    speed: normalize(point.speed_mps.unwrap_or(0.0)),
+                }
+            })
+            .collect();
+        let nodes = smooth_track_nodes(&nodes);
+        let mut segs: Vec<TrackSegment> = Vec::with_capacity(nodes.len().saturating_sub(1));
+        for pair in nodes.windows(2) {
+            let a = pair[0];
+            let b = pair[1];
             segs.push(TrackSegment {
-                start,
-                end,
-                t_a,
-                t_b,
-                speed_a,
-                speed_b,
+                start: a.pos,
+                end: b.pos,
+                t_a: a.t,
+                t_b: b.t,
+                speed_a: a.speed,
+                speed_b: b.speed,
             });
         }
 
@@ -1819,6 +2024,11 @@ impl TrackCanvas {
         self.area.redraw(cx);
     }
 
+    pub fn set_particle_density(&mut self, cx: &mut Cx, density: f32) {
+        self.draw_track.particle_density = density.clamp(0.0, 1.0);
+        self.area.redraw(cx);
+    }
+
     pub fn marker_layout(&self) -> Option<(Vec2, Vec2, Vec2)> {
         self.geom
             .as_ref()
@@ -1860,6 +2070,25 @@ impl Widget for SyncSpinner {
 
 impl SyncSpinner {
     pub fn redraw(&mut self, cx: &mut Cx) {
+        self.area.redraw(cx);
+    }
+}
+
+impl Widget for PlaybackButton {
+    fn handle_event(&mut self, _cx: &mut Cx, _event: &Event, _scope: &mut Scope) {}
+
+    fn draw_walk(&mut self, cx: &mut Cx2d, _scope: &mut Scope, walk: Walk) -> DrawStep {
+        cx.begin_turtle(walk, self.layout);
+        let rect = cx.turtle().rect();
+        self.draw_button.draw_abs(cx, rect);
+        cx.end_turtle_with_area(&mut self.area);
+        DrawStep::done()
+    }
+}
+
+impl PlaybackButton {
+    pub fn set_playing(&mut self, cx: &mut Cx, playing: bool) {
+        self.draw_button.mode = if playing { 1.0 } else { 0.0 };
         self.area.redraw(cx);
     }
 }
@@ -2214,7 +2443,8 @@ impl App {
         let Some(track) = self.track.as_ref().cloned() else {
             return;
         };
-        if std::env::var("MOBILE_EXAMPLE_DEMO_GUARD").is_ok() {
+        if std::env::var("MOBILE_EXAMPLE_DEMO_GUARD").is_ok() || demo_stage() == Some(DemoStage::S3)
+        {
             let n = track.points.len();
             self.guard_window = GuardWindow {
                 start_idx: ((n as f32) * 0.30) as usize,
@@ -2248,9 +2478,14 @@ impl App {
     }
 
     fn maybe_advance_phase(&mut self, cx: &mut Cx, now: f64) {
-        let dt = (now - self.last_now_secs).max(0.0);
+        let dt = if self.last_now_secs <= 0.0 {
+            0.0
+        } else {
+            (now - self.last_now_secs).max(0.0)
+        };
         self.last_now_secs = now;
-        let frozen_s0 = demo_stage() == Some(DemoStage::S0);
+        let stage = demo_stage();
+        let frozen_s0 = stage == Some(DemoStage::S0);
         let mut track_progress_v: f32 = 0.0;
         let mut walked_ratio_v: f32 = 0.0;
         let mut overlay_dim_v: f32 = 0.0;
@@ -2307,6 +2542,8 @@ impl App {
                 }
             }
             PHASE_STATS => {
+                track_progress_v = 1.0;
+                walked_ratio_v = self.state.playback_progress.max(STATS_PROGRESS_THRESHOLD);
                 let raw = ((now - self.phase_entered_secs) / 0.6).clamp(0.0, 1.0);
                 overlay_dim_v = ease_out_cubic(raw) as f32;
             }
@@ -2345,6 +2582,19 @@ impl App {
             self.hr_phase(now)
         };
 
+        let particle_density_v = if self.reduced_motion || frozen_s0 {
+            0.0
+        } else {
+            self.track
+                .as_ref()
+                .map(|track| {
+                    let lo = track.stats.speed_min_mps;
+                    let hi = track.stats.speed_max_mps.max(lo + 1e-3);
+                    ((self.state.current_speed_mps - lo) / (hi - lo)).clamp(0.0, 1.0)
+                })
+                .unwrap_or(0.0)
+        };
+
         let track_arc = self.track.clone();
         let canvas_ref = self.ui.widget(cx, ids!(track_canvas));
         let mut layout: Option<(Vec2, Vec2, Vec2)> = None;
@@ -2356,6 +2606,7 @@ impl App {
             canvas.set_guard_pulse(cx, guard_pulse_v);
             canvas.set_overlay_dim(cx, overlay_dim_v);
             canvas.set_scrubber_echo(cx, scrubber_echo_v);
+            canvas.set_particle_density(cx, particle_density_v);
             layout = canvas.marker_layout();
         }
         if self.phase == PHASE_SYNCING {
@@ -2555,16 +2806,13 @@ impl App {
 
     fn refresh_pause_glyph(&mut self, cx: &mut Cx) {
         let paused = self.state.is_paused || demo_stage() == Some(DemoStage::S0);
-        self.ui
-            .view(cx, ids!(pause_bars_group))
-            .set_visible(cx, !paused);
-        self.ui
-            .view(cx, ids!(pause_play_group))
-            .set_visible(cx, paused);
-        self.ui
-            .label(cx, ids!(pause_play_triangle))
-            .set_text(cx, "▶");
-        self.ui.view(cx, ids!(pause_button)).redraw(cx);
+        if let Some(mut button) = self
+            .ui
+            .widget(cx, ids!(pause_button))
+            .borrow_mut::<PlaybackButton>()
+        {
+            button.set_playing(cx, !paused);
+        }
     }
 
     fn refresh_speed_buttons(&mut self, cx: &mut Cx) {
@@ -2651,28 +2899,42 @@ impl MatchEvent for App {
         self.phase = PHASE_SYNCING;
         self.phase_entered_secs = 0.0;
         self.last_now_secs = 0.0;
-        let frozen_s0 = demo_stage() == Some(DemoStage::S0);
-        self.state.is_paused = frozen_s0;
+        let stage = demo_stage();
+        let frozen_s0 = stage == Some(DemoStage::S0);
+        self.state.is_paused = false;
 
-        if !frozen_s0 {
-            if let Ok(seek) = std::env::var("MOBILE_EXAMPLE_DEMO_SEEK") {
-                if let Ok(p) = seek.parse::<f32>() {
-                    self.state.playback_progress = p.clamp(0.0, 0.999);
-                }
+        match stage {
+            Some(DemoStage::S0) => {
+                self.state.is_paused = true;
+            }
+            Some(stage @ (DemoStage::S2 | DemoStage::S3)) => {
+                self.state.network_state = NetworkState::Fallback;
+                self.state.data_source = DataSource::LocalFallback;
+                self.phase = PHASE_PLAYBACK;
+                self.state.playback_progress = demo_seek(stage.default_seek());
+            }
+            Some(stage @ DemoStage::S4) => {
+                self.state.network_state = NetworkState::Fallback;
+                self.state.data_source = DataSource::LocalFallback;
+                self.state.is_paused = true;
+                self.phase = PHASE_STATS;
+                self.state.playback_progress = demo_seek(stage.default_seek());
+            }
+            None => {
+                self.state.playback_progress = demo_seek(0.0);
             }
         }
         if !frozen_s0 {
             if let Some(t) = self.track.clone() {
-                let p0 = self.state.playback_progress;
-                self.state.apply_progress(&t, p0);
+                self.state.apply_progress(&t, self.state.playback_progress);
             }
         }
         self.compute_guard_window();
 
-        if frozen_s0 {
+        if stage.is_some() {
             self.network_rx = None;
             self.worker_thread_id = None;
-            self.fetching_started_at_secs = Some(0.0);
+            self.fetching_started_at_secs = if frozen_s0 { Some(0.0) } else { None };
         } else {
             let (rx, tid) = spawn_fetch_worker();
             self.network_rx = Some(rx);
@@ -2693,14 +2955,7 @@ impl MatchEvent for App {
             .unwrap_or(false);
         self.reduced_motion = env_var_reduced || detect_android_reduced_motion();
         if self.reduced_motion {
-            log!("reduced-motion: particle / scrubber-echo / guard-pulse / hr-pulse 全部降级");
-            if let Some(mut canvas) = self
-                .ui
-                .widget(cx, ids!(track_canvas))
-                .borrow_mut::<TrackCanvas>()
-            {
-                canvas.draw_track.particle_density = 0.0;
-            }
+            log!("reduced-motion: scrubber-echo / guard-pulse / hr-pulse 全部降级");
         }
 
         self.refresh_top_bar(cx);
@@ -2709,7 +2964,28 @@ impl MatchEvent for App {
         self.refresh_pause_glyph(cx);
         self.refresh_speed_buttons(cx);
         if let Some(track) = self.track.clone() {
+            if !frozen_s0 {
+                self.refresh_hud(cx, &track);
+            }
             self.refresh_scrubber_labels(cx, &track);
+            if self.phase == PHASE_STATS {
+                self.fill_stats(cx, &track);
+            }
+        }
+        match stage {
+            Some(DemoStage::S2 | DemoStage::S3) => {
+                self.ui.view(cx, ids!(sync_overlay)).set_visible(cx, false);
+                self.ui.view(cx, ids!(stats_overlay)).set_visible(cx, false);
+                self.ui.view(cx, ids!(label_overlay)).set_visible(cx, true);
+                self.ui.view(cx, ids!(right_overlay)).set_visible(cx, true);
+            }
+            Some(DemoStage::S4) => {
+                self.ui.view(cx, ids!(sync_overlay)).set_visible(cx, false);
+                self.ui.view(cx, ids!(stats_overlay)).set_visible(cx, true);
+                self.ui.view(cx, ids!(label_overlay)).set_visible(cx, false);
+                self.ui.view(cx, ids!(right_overlay)).set_visible(cx, false);
+            }
+            _ => {}
         }
         self.next_frame = cx.new_next_frame();
     }
@@ -2738,6 +3014,7 @@ impl MatchEvent for App {
                 let p = (value / 100.0).clamp(0.0, 0.999) as f32;
                 self.state.apply_progress(&track, p);
                 self.last_scrubber_drag_secs = self.now_secs;
+                self.refresh_hud(cx, &track);
                 self.refresh_scrubber_labels(cx, &track);
             }
         }
@@ -2858,5 +3135,32 @@ impl AppMain for App {
 
         self.match_event(cx, event);
         self.ui.handle_event(cx, event, &mut Scope::empty());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_all_demo_stages_case_insensitively() {
+        assert_eq!(parse_demo_stage("S0"), Some(DemoStage::S0));
+        assert_eq!(parse_demo_stage("s2"), Some(DemoStage::S2));
+        assert_eq!(parse_demo_stage("S3"), Some(DemoStage::S3));
+        assert_eq!(parse_demo_stage("s4"), Some(DemoStage::S4));
+        assert_eq!(parse_demo_stage("unknown"), None);
+    }
+
+    #[test]
+    fn clamps_demo_seek_to_playback_range() {
+        fn assert_close(left: f32, right: f32) {
+            assert!((left - right).abs() < f32::EPSILON);
+        }
+
+        assert_close(parse_demo_seek(Some("-1.0"), 0.25), 0.0);
+        assert_close(parse_demo_seek(Some("0.5"), 0.25), 0.5);
+        assert_close(parse_demo_seek(Some("1.0"), 0.25), 0.999);
+        assert_close(parse_demo_seek(Some("bad"), 0.25), 0.25);
+        assert_close(parse_demo_seek(None, 0.25), 0.25);
     }
 }
