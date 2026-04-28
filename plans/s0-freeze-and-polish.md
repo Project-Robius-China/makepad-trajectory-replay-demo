@@ -148,6 +148,10 @@ MOBILE_EXAMPLE_DEMO_STAGE=S2 MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run
   - Replace the oversized current S4 stats card: width around 282px, title around 15.5px, row labels around 10.5px, values around 13px, row height around 34px. Avoid large 24px statistic typography.
   - Avoid emoji icons that render inconsistently in the current font; use small monochrome glyphs (`•`, `○`, `↗`, `♥`) with metric colors.
   - Add `取消` as a compact `MpButtonSmall`-style footer button. Tap hides `stats_overlay`; it should not mutate playback progress or stats data.
+- 2026-04-28 S4 modal re-open behavior:
+  - After `取消`, the modal may be hidden while the app remains in `PHASE_STATS`.
+  - If the user scrubs below `STATS_PROGRESS_THRESHOLD`, switch back to `PHASE_PLAYBACK`, restore route labels/right controls, and keep the modal hidden. This re-arms completion.
+  - If progress later reaches the threshold again, enter `PHASE_STATS` normally so the completion modal appears again.
 
 **Existing demo env flags:**
 - `MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run` seeds replay progress for S2/S3/S4 data-linked stages.

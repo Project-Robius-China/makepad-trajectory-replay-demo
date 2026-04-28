@@ -3048,6 +3048,14 @@ impl MatchEvent for App {
                 self.last_scrubber_drag_secs = self.now_secs;
                 self.refresh_hud(cx, &track);
                 self.refresh_scrubber_labels(cx, &track);
+                if self.phase == PHASE_STATS && p < STATS_PROGRESS_THRESHOLD {
+                    self.enter_phase(cx, PHASE_PLAYBACK, self.now_secs);
+                    self.ui.view(cx, ids!(stats_overlay)).set_visible(cx, false);
+                    self.ui.view(cx, ids!(label_overlay)).set_visible(cx, true);
+                    self.ui.view(cx, ids!(right_overlay)).set_visible(cx, true);
+                } else if self.phase == PHASE_PLAYBACK && p >= STATS_PROGRESS_THRESHOLD {
+                    self.enter_phase(cx, PHASE_STATS, self.now_secs);
+                }
             }
         }
     }
