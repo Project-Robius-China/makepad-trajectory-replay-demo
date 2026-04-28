@@ -14,7 +14,7 @@
 
 - `design/refs/storyboard-1.png` — S0 同步 / S1 path-draw / S3 Guard / S4 stats 4 屏拼图
 - `design/refs/storyboard-2.png` — S2 主回放 / S3 Guard / S4 stats 3 屏拼图
-- `design/auto/` — 跑 demo 时 `screenshot` skill 工作流落盘的截图 (raw + 800w 降采样版本), 不入 git
+- `design/auto/` — 跑 demo 时 `screenshot` skill 工作流落盘的截图 (raw + 默认 1200w 降采样版本), 不入 git
 
 ## 实现使用的 skill 清单
 
@@ -73,15 +73,16 @@
 
 ## 截图尺寸约束 (硬性, 防 context 爆炸)
 
-cc 用 `Read` 工具读截图前**必须先用 `sips` 降采样**。Mac 默认 Retina 屏截图 3840×2160, 单张 ≈1MB, 直接 Read 会消耗 30-50k tokens, 几张就把 context 装满。
+cc 用 `Read` 工具读截图前**必须先用 `sips` 降采样**。默认可用 1200w; 原始 Retina 全屏图仍会大量消耗 context, 所以禁止直接 Read 原图。
 
 ### 标准降采样命令
 
 ```bash
-sips -Z 800 -s formatOptions 70 input.png --out output_800w.png
-# -Z 800       最长边压到 800px (保持长宽比)
-# formatOptions 70  PNG 优化质量
-# 实测: 3840×2160 / 1.0MB → 800×450 / 123KB, 视觉信息无损
+sips -Z 1200 -s formatOptions 75 input.png --out output_1200w.png
+# -Z 1200      默认最长边压到 1200px (保持长宽比), 适合单张 UI 自审
+# -Z 1600      细节检查可临时放大到 1600px, 但一次只 Read 1 张
+# -Z 800       多图对比或连续迭代时使用, 防止 context 膨胀
+# formatOptions 75  PNG 优化质量
 ```
 
 ### 截图工作流模板 (cc 必须按此顺序)
@@ -91,7 +92,7 @@ sips -Z 800 -s formatOptions 70 input.png --out output_800w.png
 ```bash
 SCRATCHPAD="/Users/zhaoyue/workspace/matrix/mobile_example/design/auto"
 RAW="$SCRATCHPAD/raw_$(date +%H%M%S).png"
-SMALL="${RAW%.png}_800w.png"
+SMALL="${RAW%.png}_1200w.png"
 
 # 1. 把 makepad 窗口提到最前 (否则截到的是 IDE / 浏览器)
 #    进程名按需替换: 实际跑 `cargo run -p mobile_example` 时进程名一般是
@@ -124,8 +125,8 @@ screencapture -x "$RAW"
 #       [ -z "$RAW" ] && { echo "❌ ABORT: 没有窗口被捕获"; exit 1; }
 # 推荐用 (a), 因为它在 demo 没起来时**直接报错**, 不会偷偷退化截桌面。
 
-# 3. 立即降采样 — 强制! Read 原图必爆 context
-sips -Z 800 -s formatOptions 70 "$RAW" --out "$SMALL"
+# 3. 立即降采样 — 强制! 默认 1200w; 多图用 800w, 细节单图可临时 1600w
+sips -Z 1200 -s formatOptions 75 "$RAW" --out "$SMALL"
 
 # 4. 删除原图 (省磁盘 + 防误 Read)
 rm "$RAW"
@@ -134,7 +135,7 @@ rm "$RAW"
 # Read $SMALL
 ```
 
-**禁止** Read 任何未经 `sips -Z 800` 处理的原始截图。如果截图来自 Android `adb shell screencap` 同样要先降采样。
+**禁止** Read 任何未经 `sips` 降采样处理的原始截图。默认使用 `sips -Z 1200 -s formatOptions 75`; 多图对比使用 `-Z 800`; 细节单图检查允许临时使用 `-Z 1600`。如果截图来自 Android `adb shell screencap` 同样要先降采样。
 
 **强制** 截图前必须先 osascript 把目标窗口提到最前。看到 demo 跑起来不等于它在最前 — IDE / 浏览器 / Finder 任何一个挡住都会让截图作废, 自审会跑偏。如果 osascript 找不到进程 (报 -1719 invalid index), 说明 demo 根本没启动, 先回去查 `cargo run` 是不是崩了, 不要在没截到目标窗口的情况下声称 BDD 通过。
 

@@ -2,7 +2,8 @@
 
 > **使用方式**: 新开 cc session, 第一条消息只需说一句:
 >
-> > 读 `/Users/zhaoyue/workspace/matrix/mobile_example/kickoff.md` 然后按上面执行, 全程不用问我。
+>> 读 `/Users/zhaoyue/workspace/matrix/mobile_example/kickoff.md` 然后按上面执行, 全程不用问我。
+>>
 >
 > 不要复制本文件内容到 prompt 里, 让 cc 自己 Read 这个文件 — 这样以后改任务只动这一个文件即可。
 
@@ -12,7 +13,7 @@
 
 你接下来全程自主推进, 用户不会中途回应。除了"卡死上报"以外, 不要问任何问题。
 
-**默认决策权**: 二义性裁决遵循 `visual.spec.md` > `prd.md §6` > `design/refs/*.png` 顺序。三件套都决定不了时, 你自己拍板, 把决策写进 commit message body。
+**默认决策权**: 二义性裁决遵循 `visual.spec.md` &gt; `prd.md §6` &gt; `design/refs/*.png` 顺序。三件套都决定不了时, 你自己拍板, 把决策写进 commit message body。
 
 ---
 
@@ -20,7 +21,7 @@
 
 在当前仓库 `/Users/zhaoyue/workspace/matrix/mobile_example` 用 Makepad 2.0 实现一个 Android 端骑行轨迹回放 demo, 交付目标是 **Project-Robius-China 社区 review 时可现场跑通的开源示例**。
 
-最终验收 = `visual.spec.md` 22 条 BDD + `spec.spec.md` 34 条 BDD 全部通过自审 (允许少量 BLOCKED, 见 [完成条件](#完成条件))。
+最终验收 = `visual.spec.md` 22 条 BDD + `spec.spec.md` 34 条 BDD 全部通过自审 (允许少量 BLOCKED, 见 [完成条件](#%E5%AE%8C%E6%88%90%E6%9D%A1%E4%BB%B6))。
 
 ---
 
@@ -52,19 +53,18 @@
 每完成一屏立刻跑这个闭环:
 
 1. `cargo run` 等价命令把 demo 跑起来
-2. **严格照搬 `CLAUDE.md` "截图工作流模板"** 的所有步骤 (osascript 置顶 → 调 `screenshot` skill 的 `take_screenshot.py` 或 fallback 到 `screencapture -x` → `sips -Z 800` 降采样 → 删原图 → Read 800w 版)。模板是唯一真相, 不要在这里重复或改写步骤 — 以 `CLAUDE.md` 当前内容为准
+2. **严格照搬** `CLAUDE.md` **"截图工作流模板"** 的所有步骤 (osascript 置顶 → 调 `screenshot` skill 的 `take_screenshot.py` 或 fallback 到 `screencapture -x` → `sips -Z 800` 降采样 → 删原图 → Read 800w 版)。模板是唯一真相, 不要在这里重复或改写步骤 — 以 `CLAUDE.md` 当前内容为准
 3. 对照 `visual.spec.md` 该屏所有 BDD 逐条写一行:
 
    ```
    BDD-N: [我观察到 ...] → [通过 / 不通过, 因为 ...]
    ```
-
 4. 不通过的条目, 调 shader uniform / token / layout, 重跑步骤 1-3
 5. 同一屏视觉 diff 卡 5 轮还过不了, 把这条 BDD 标 `BLOCKED`, 写理由, 跳到下一屏
 
 ### 禁止行为 (踩到就当 task 失败)
 
-- ✗ Read 任何未经 `sips -Z 800` 处理的原始截图 (会爆 context)
+- ✗ Read 任何未经 `sips -Z 1200` 处理的原始截图 (会爆 context)
 - ✗ 没截图就声称 BDD 通过 (无视觉证据 = 不通过)
 - ✗ 看到 diff 就说 "差不多", 必须给出具体像素 / 颜色 / 位置差异描述
 - ✗ 把代码改动当成视觉结果 (改了 shader 不等于看到效果)
@@ -84,7 +84,6 @@
   BLOCKED: BDD-7 (理由: ...) ...
   决策: <非契约默认的设计选择写这里>
   ```
-
 - **不要** push, 用户后面自己看
 - 中途 context 接近上限时, 先提一个 WIP commit 把当前进度落地, 总结写进 body, 这样下一个 cc session 能从 git log + design/auto 恢复上下文
 
@@ -118,7 +117,6 @@
 满足下列**全部**即可宣布完工, 写一条总结然后停:
 
 - ✓ 22 条视觉 BDD + 34 条行为 BDD 全部 PASS / BLOCKED 标注完整
-- ✓ 单屏 BLOCKED 总数 ≤ 6 条 (允许少量妥协, 但每条要有 commit 记录)
 - ✓ `design/auto/` 里有完整的最终验收截图 (每屏至少一张 800w PNG)
 - ✓ git log 看得出每屏一个 commit 的清晰节奏
 

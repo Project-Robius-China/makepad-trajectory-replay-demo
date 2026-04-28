@@ -1,4 +1,4 @@
-use crate::state::{DerivedStats, TrackBounds, TrajectoryPoint, TrajectoryProfile, Track};
+use crate::state::{DerivedStats, Track, TrackBounds, TrajectoryPoint, TrajectoryProfile};
 use quick_xml::events::Event;
 use quick_xml::name::{Namespace, ResolveResult};
 use quick_xml::reader::NsReader;
@@ -181,7 +181,7 @@ fn fill_speed_from_distance(points: &mut [TrajectoryPoint]) {
         speeds.push(s.max(0.0));
     }
     let win: usize = 5;
-    for i in 0..n {
+    for (i, point) in points.iter_mut().enumerate() {
         let lo = i.saturating_sub(win / 2);
         let hi = (i + win / 2 + 1).min(n);
         let mut sum = 0.0_f32;
@@ -191,7 +191,7 @@ fn fill_speed_from_distance(points: &mut [TrajectoryPoint]) {
             cnt += 1;
         }
         let smoothed = if cnt > 0 { sum / cnt as f32 } else { 0.0 };
-        points[i].speed_mps = Some(smoothed);
+        point.speed_mps = Some(smoothed);
     }
 }
 
@@ -268,12 +268,21 @@ fn compute_stats(points: &[TrajectoryPoint]) -> DerivedStats {
     }
 
     s.distance_m_total = total_dist as f32;
-    s.duration_ms_total = points.last().unwrap().timestamp_ms - points.first().unwrap().timestamp_ms;
+    s.duration_ms_total =
+        points.last().unwrap().timestamp_ms - points.first().unwrap().timestamp_ms;
     s.elevation_gain_m = gain;
-    s.avg_hr = if hr_cnt > 0 { hr_sum as f32 / hr_cnt as f32 } else { 0.0 };
+    s.avg_hr = if hr_cnt > 0 {
+        hr_sum as f32 / hr_cnt as f32
+    } else {
+        0.0
+    };
     s.speed_max_mps_ceil = s.speed_max_mps.ceil();
-    if s.hr_min == u16::MAX { s.hr_min = 0; }
-    if s.cad_min == u16::MAX { s.cad_min = 0; }
+    if s.hr_min == u16::MAX {
+        s.hr_min = 0;
+    }
+    if s.cad_min == u16::MAX {
+        s.cad_min = 0;
+    }
     s
 }
 
@@ -340,7 +349,8 @@ fn parse_iso_time(s: &str) -> Option<i64> {
     }
 
     let days = days_from_civil(year, month, day);
-    let secs = days * 86400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64 - tz_offset_sec;
+    let secs =
+        days * 86400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64 - tz_offset_sec;
     Some(secs * 1000 + millis as i64)
 }
 

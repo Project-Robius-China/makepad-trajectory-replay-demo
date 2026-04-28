@@ -1,7 +1,6 @@
-use std::sync::Arc;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TrajectoryProfile {
+    #[default]
     Cycling,
     Running,
     Hiking,
@@ -9,12 +8,6 @@ pub enum TrajectoryProfile {
     Transit,
     Travel,
     Flight,
-}
-
-impl Default for TrajectoryProfile {
-    fn default() -> Self {
-        Self::Cycling
-    }
 }
 
 impl TrajectoryProfile {
@@ -131,22 +124,14 @@ pub struct Track {
     pub profile: TrajectoryProfile,
 }
 
-pub type TrackHandle = Arc<Track>;
-
 #[derive(Debug, Clone, Copy)]
 pub struct UserProfile {
     pub max_hr: u16,
-    pub age: u8,
-    pub sport: TrajectoryProfile,
 }
 
 impl Default for UserProfile {
     fn default() -> Self {
-        Self {
-            max_hr: 195,
-            age: 35,
-            sport: TrajectoryProfile::Cycling,
-        }
+        Self { max_hr: 195 }
     }
 }
 
@@ -164,14 +149,9 @@ pub struct PlaybackState {
     pub data_source: DataSource,
     pub network_state: NetworkState,
     pub contract_guard_active: bool,
-    pub contract_guard_reason: Option<String>,
     pub walked_segment_ratio: f32,
     pub scrubber_echo_phase: f32,
     pub network_state_entered_at_secs: f64,
-    pub guard_active_started_at_secs: f64,
-    pub last_scrubber_drag_secs: f64,
-    pub guard_card_visible: bool,
-    pub stats_overlay_visible: bool,
 }
 
 impl Default for PlaybackState {
@@ -189,14 +169,9 @@ impl Default for PlaybackState {
             data_source: DataSource::LocalFallback,
             network_state: NetworkState::Idle,
             contract_guard_active: false,
-            contract_guard_reason: None,
             walked_segment_ratio: 0.0,
             scrubber_echo_phase: 0.0,
             network_state_entered_at_secs: 0.0,
-            guard_active_started_at_secs: 0.0,
-            last_scrubber_drag_secs: -10.0,
-            guard_card_visible: false,
-            stats_overlay_visible: false,
         }
     }
 }
