@@ -373,10 +373,13 @@ script_mod! {
             let pulse = 0.5 + 0.5 * sin(self.hr_phase * 6.283185)
             let halo_r = mix(8., 12., pulse)
             let dot_r = 3.0
-            let d_dot = length(p - c) - dot_r
+            let dist = length(p - c)
+            let d_dot = dist - dot_r
             let dot_a = clamp(0.5 - d_dot, 0., 1.)
-            let d_halo = length(p - c) - halo_r
-            let halo_a = exp(-max(d_halo, 0.) * 0.35) * 0.55
+            let d_halo = dist - halo_r
+            let outer = min(c.x, c.y)
+            let radial_clip = 1.0 - smoothstep(outer - 2.5, outer - 0.5, dist)
+            let halo_a = exp(-max(d_halo, 0.) * 0.35) * 0.55 * radial_clip
             let cyan = vec3(0.0, 0.898, 1.0)
             let pulse_red = 1.0 - exp(-self.guard_pulse_phase * 3.0)
             let color = mix(cyan, vec3(1., 0.231, 0.431), pulse_red * step(0.001, self.guard_pulse_phase))
@@ -418,18 +421,18 @@ script_mod! {
 
     set_type_default() do #(DrawMapTone::script_shader(vm)){
         ..mod.draw.DrawQuad
-        tint_color: vec3(0.050, 0.095, 0.135)
-        edge_color: vec3(0.004, 0.006, 0.012)
-        border_color: vec3(0.000, 0.620, 0.720)
+        tint_color: vec3(0.018, 0.036, 0.056)
+        edge_color: vec3(0.002, 0.004, 0.010)
+        border_color: vec3(0.00, 0.62, 0.72)
 
         pixel: fn() {
             let p = self.pos * self.rect_size
             let edge_dist = min(min(p.x, self.rect_size.x - p.x), min(p.y, self.rect_size.y - p.y))
-            let inner = smoothstep(0.0, 18.0, edge_dist)
-            let edge = 1.0 - smoothstep(0.0, 72.0, edge_dist)
+            let inner = smoothstep(0.0, 22.0, edge_dist)
+            let edge = 1.0 - smoothstep(0.0, 78.0, edge_dist)
             let border = 1.0 - smoothstep(0.0, 1.4, edge_dist)
-            let alpha = clamp(inner * 0.105 + edge * 0.16 + border * 0.20, 0.0, 0.32)
-            let color = mix(mix(self.tint_color, self.edge_color, edge * 0.60), self.border_color, border * 0.34)
+            let alpha = clamp(inner * 0.16 + edge * 0.20 + border * 0.24, 0.0, 0.36)
+            let color = mix(mix(self.tint_color, self.edge_color, edge * 0.64), self.border_color, border * 0.42)
             return Pal.premul(vec4(color.x, color.y, color.z, alpha))
         }
     }
@@ -440,9 +443,9 @@ script_mod! {
         has_texture: 0.0
         uv_offset: vec2(0.0, 0.0)
         uv_scale: vec2(1.0, 1.0)
-        map_contrast: 1.22
-        map_saturation: 0.62
-        feature_lift: 0.36
+        map_contrast: 1.85
+        map_saturation: 0.28
+        feature_lift: 0.82
 
         pixel: fn() {
             if self.has_texture > 0.5 {
@@ -452,14 +455,18 @@ script_mod! {
                 let luma = dot(rgb, vec3(0.299, 0.587, 0.114))
                 let gray = vec3(luma, luma, luma)
                 let desat = mix(gray, rgb, self.map_saturation)
-                let base = (desat - vec3(0.075, 0.080, 0.095)) * self.map_contrast + vec3(0.112, 0.132, 0.168)
-                let feature = smoothstep(0.12, 0.32, luma)
-                let lifted = base + vec3(0.135, 0.185, 0.235) * feature * self.feature_lift
-                return Pal.premul(vec4(lifted.x, lifted.y, lifted.z, 1.0))
+                let base = vec3(0.030, 0.044, 0.066) + desat * vec3(0.105, 0.130, 0.165) * self.map_contrast
+                let feature = smoothstep(0.085, 0.285, luma)
+                let coast = smoothstep(0.045, 0.14, luma) * (1.0 - smoothstep(0.23, 0.36, luma))
+                let road_color = vec3(0.19, 0.235, 0.315)
+                let coast_color = vec3(0.105, 0.185, 0.245)
+                let mapped = mix(base, coast_color, coast * 0.34)
+                let mapped = mix(mapped, road_color, feature * self.feature_lift)
+                return Pal.premul(vec4(mapped.x, mapped.y, mapped.z, 1.0))
             }
             // P13.2: tile 加载占位 — 与 dark tile server (Carto Dark Matter) 自然过渡.
-            // 颜色取抬亮后的地图底色, 避免 placeholder 与 app 黑底融为一体.
-            return Pal.premul(vec4(0.112, 0.132, 0.168, 1.0))
+            // 颜色取可读的深蓝黑地图底, 避免 placeholder 与 app 黑底完全融为一体.
+            return Pal.premul(vec4(0.030, 0.044, 0.066, 1.0))
         }
     }
 

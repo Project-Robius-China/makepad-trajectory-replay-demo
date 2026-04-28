@@ -176,6 +176,21 @@ MOBILE_EXAMPLE_DEMO_STAGE=S2 MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run
   - Current contrast issue is expected with Carto Dark Matter tiles because the tile base and app shell both sit near `#0A0A0F/#14141C`; without a map-specific tone layer the map blends into the black background.
   - Keep the map dark so S2 route glow remains dominant, but add two separation passes: tint/contrast the tile shader toward blue-gray with subtle feature lift, then draw a low-alpha full-map tone/edge overlay before route rendering.
   - Do not reintroduce the old grid/water fake map. The real tile map is the base; shader tuning should make it readable without competing with the route.
+- 2026-04-28 map white-background pivot:
+  - Manual screenshot still reads almost black even after the first contrast pass. User prefers stronger separation, so pivot the map stage to a pale "paper map" surface.
+  - Target palette: map base around `#D7E0EA`, feature/road/coast lines around slate blue-gray `#435166`, app chrome remains black, route/particles stay cyan/orange.
+  - Keep the light map inside `TrackCanvas` only. Do not convert the app shell/cards to light mode.
+  - Because S0 sync overlay sits on top of the map, switch sync spinner and sync overlay text to dark navy/slate for readability on the pale map.
+- 2026-04-28 current halo square artifact:
+  - On the pale map, the current-position halo showed a faint square because `DrawHalo` still emitted non-zero alpha at the 32px draw rect edges.
+  - Add a radial clip near the halo rect edge so the glow fades to transparent inside a circle before the rectangular draw boundary.
+- 2026-04-28 map zoom rollback:
+  - Manual test showed auto-fitting the full GPX bounds made the map/route too small and sparse. Revert to fixed map zoom 12 and restore the earlier route projection insets.
+  - Handle endpoint overflow later with label/marker placement or a narrower local adjustment, not by globally zooming the whole map out.
+- 2026-04-28 map dark-background pivot:
+  - Manual test showed the pale map has strong separation but poor visual fit with the black replay UI. Pivot back to a dark map.
+  - Do not return to the original all-black blend. Target a deep navy map base around `#08111A`, roads/features around `#303C50`, and a subtle cyan edge line so the map stage remains distinguishable from the app shell.
+  - Restore S0 spinner and sync overlay text to light-on-dark colors.
 
 **Existing demo env flags:**
 - `MOBILE_EXAMPLE_DEMO_SEEK=0.50 cargo run` seeds replay progress for S2/S3/S4 data-linked stages.
