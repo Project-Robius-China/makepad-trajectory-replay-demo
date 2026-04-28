@@ -491,91 +491,149 @@ script_mod! {
                             }
                         }
 
+                        // stats_overlay (P12.0 升级 per visual.spec L444-465):
+                        // ✓ checkmark + "回放已完成" 标题 + 4 项单列垂直 + leading icons + frosted glass card.
                         stats_overlay := View{
                             width: Fill height: Fill
                             flow: Down
                             align: Center
-                            spacing: 14
-                            padding: Inset{ left: 32 right: 32 top: 96 bottom: 32 }
+                            padding: Inset{ left: 32 right: 32 top: 32 bottom: 24 }
                             visible: false
 
-                            stats_title := Label{
-                                text: "本次回放总览"
-                                draw_text.color: #xF5F5FA
-                                draw_text.text_style.font_size: 16
-                            }
+                            stats_card := RoundedView{
+                                width: Fit height: Fit
+                                flow: Down
+                                align: Center
+                                spacing: 10
+                                padding: Inset{ left: 28 right: 28 top: 18 bottom: 18 }
+                                new_batch: true
+                                draw_bg.color: #x14141Cd9
+                                draw_bg.radius: 12.
 
-                            View{
-                                width: Fill height: Fit
-                                flow: Right
-                                spacing: 16
-                                stat_distance_cell := View{
-                                    width: Fill height: Fit
-                                    flow: Down
-                                    spacing: 4
-                                    align: Align{ x: 0.0 }
+                                stats_checkmark := RoundedView{
+                                    width: 32 height: 32
+                                    align: Center
+                                    new_batch: true
+                                    draw_bg.color: #x10B981
+                                    draw_bg.radius: 16.
                                     Label{
-                                        text: "总距离"
-                                        draw_text.color: #x7A7B8C
-                                        draw_text.text_style.font_size: 10
-                                    }
-                                    stat_distance_value := Label{
-                                        text: "—"
-                                        draw_text.color: #xF5F5FA
-                                        draw_text.text_style.font_size: 24
+                                        text: "✓"
+                                        draw_text.color: #xFFFFFF
+                                        draw_text.text_style.font_size: 18
                                     }
                                 }
-                                stat_duration_cell := View{
-                                    width: Fill height: Fit
-                                    flow: Down
-                                    spacing: 4
-                                    align: Align{ x: 0.0 }
+
+                                stats_title := Label{
+                                    text: "回放已完成"
+                                    draw_text.color: #xF5F5FA
+                                    draw_text.text_style.font_size: 18
+                                }
+
+                                stat_distance_row := View{
+                                    width: Fit height: Fit
+                                    flow: Right
+                                    align: Align{ y: 0.5 }
+                                    spacing: 12
                                     Label{
-                                        text: "总时长"
-                                        draw_text.color: #x7A7B8C
-                                        draw_text.text_style.font_size: 10
+                                        text: "📍"
+                                        draw_text.color: #x4A6CF7
+                                        draw_text.text_style.font_size: 14
                                     }
-                                    stat_duration_value := Label{
-                                        text: "—"
-                                        draw_text.color: #xF5F5FA
-                                        draw_text.text_style.font_size: 24
+                                    View{
+                                        width: Fit height: Fit
+                                        flow: Down
+                                        spacing: 2
+                                        Label{
+                                            text: "总距离"
+                                            draw_text.color: #x7A7B8C
+                                            draw_text.text_style.font_size: 11
+                                        }
+                                        stat_distance_value := Label{
+                                            text: "—"
+                                            draw_text.color: #xF5F5FA
+                                            draw_text.text_style.font_size: 24
+                                        }
                                     }
                                 }
-                            }
-                            View{
-                                width: Fill height: Fit
-                                flow: Right
-                                spacing: 16
-                                stat_climb_cell := View{
-                                    width: Fill height: Fit
-                                    flow: Down
-                                    spacing: 4
-                                    align: Align{ x: 0.0 }
+
+                                stat_duration_row := View{
+                                    width: Fit height: Fit
+                                    flow: Right
+                                    align: Align{ y: 0.5 }
+                                    spacing: 12
                                     Label{
-                                        text: "累计爬升"
-                                        draw_text.color: #x7A7B8C
-                                        draw_text.text_style.font_size: 10
+                                        text: "⏱"
+                                        draw_text.color: #xFF8A3D
+                                        draw_text.text_style.font_size: 14
                                     }
-                                    stat_climb_value := Label{
-                                        text: "—"
-                                        draw_text.color: #xF5F5FA
-                                        draw_text.text_style.font_size: 24
+                                    View{
+                                        width: Fit height: Fit
+                                        flow: Down
+                                        spacing: 2
+                                        Label{
+                                            text: "总时长"
+                                            draw_text.color: #x7A7B8C
+                                            draw_text.text_style.font_size: 11
+                                        }
+                                        stat_duration_value := Label{
+                                            text: "—"
+                                            draw_text.color: #xF5F5FA
+                                            draw_text.text_style.font_size: 24
+                                        }
                                     }
                                 }
-                                stat_avg_hr_cell := View{
-                                    width: Fill height: Fit
-                                    flow: Down
-                                    spacing: 4
-                                    align: Align{ x: 0.0 }
+
+                                stat_climb_row := View{
+                                    width: Fit height: Fit
+                                    flow: Right
+                                    align: Align{ y: 0.5 }
+                                    spacing: 12
                                     Label{
-                                        text: "平均心率"
-                                        draw_text.color: #x7A7B8C
-                                        draw_text.text_style.font_size: 10
+                                        text: "↗"
+                                        draw_text.color: #x10B981
+                                        draw_text.text_style.font_size: 16
                                     }
-                                    stat_avg_hr_value := Label{
-                                        text: "—"
-                                        draw_text.color: #xF5F5FA
-                                        draw_text.text_style.font_size: 24
+                                    View{
+                                        width: Fit height: Fit
+                                        flow: Down
+                                        spacing: 2
+                                        Label{
+                                            text: "累计爬升"
+                                            draw_text.color: #x7A7B8C
+                                            draw_text.text_style.font_size: 11
+                                        }
+                                        stat_climb_value := Label{
+                                            text: "—"
+                                            draw_text.color: #xF5F5FA
+                                            draw_text.text_style.font_size: 24
+                                        }
+                                    }
+                                }
+
+                                stat_avg_hr_row := View{
+                                    width: Fit height: Fit
+                                    flow: Right
+                                    align: Align{ y: 0.5 }
+                                    spacing: 12
+                                    Label{
+                                        text: "♥"
+                                        draw_text.color: #xFF3B6E
+                                        draw_text.text_style.font_size: 16
+                                    }
+                                    View{
+                                        width: Fit height: Fit
+                                        flow: Down
+                                        spacing: 2
+                                        Label{
+                                            text: "平均心率"
+                                            draw_text.color: #x7A7B8C
+                                            draw_text.text_style.font_size: 11
+                                        }
+                                        stat_avg_hr_value := Label{
+                                            text: "—"
+                                            draw_text.color: #xF5F5FA
+                                            draw_text.text_style.font_size: 24
+                                        }
                                     }
                                 }
                             }
