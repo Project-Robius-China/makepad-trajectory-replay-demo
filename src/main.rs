@@ -185,6 +185,19 @@ script_mod! {
         }
     }
 
+    // P12.1 B5: DrawParticle 离散粒子 shader (SDF dot + smoothstep AA, makepad-2.0-shaders pattern)
+    set_type_default() do #(DrawParticle::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        particle_color: vec3(1., 0.541, 0.239)
+        particle_alpha: 0.7
+
+        pixel: fn() {
+            let d = length(self.pos - vec2(0.5, 0.5))
+            let alpha = 1.0 - smoothstep(0.35, 0.5, d)
+            return Pal.premul(vec4(self.particle_color * alpha * self.particle_alpha, alpha * self.particle_alpha))
+        }
+    }
+
     let TrackCanvasBase = #(TrackCanvas::register_widget(vm))
     let TrackCanvas = set_type_default() do TrackCanvasBase{
         width: Fill
@@ -1038,6 +1051,15 @@ pub struct DrawMapGrid {
     #[live] bg_color: Vec3,
 }
 
+// P12.1 B5 升级: 离散粒子 instanced rendering (per spec.spec L209: 1000-2000 粒子)
+#[derive(Script, ScriptHook)]
+#[repr(C)]
+pub struct DrawParticle {
+    #[deref] draw_super: DrawQuad,
+    #[live] particle_color: Vec3,
+    #[live] particle_alpha: f32,
+}
+
 #[derive(Script, ScriptHook, Widget)]
 pub struct TrackCanvas {
     #[uid] uid: WidgetUid,
@@ -1050,6 +1072,7 @@ pub struct TrackCanvas {
     #[live] draw_halo: DrawHalo,
     #[live] draw_water: DrawWater,
     #[live] draw_map: DrawMapGrid,
+    #[live] draw_particle: DrawParticle,
 
     #[rust] track: Option<Arc<Track>>,
     #[rust] geom: Option<TrackGeom>,
@@ -1139,6 +1162,57 @@ impl Widget for TrackCanvas {
                     self.draw_track.draw_abs(cx, bb);
                 }
                 self.draw_track.end_many_instances(cx);
+
+                // P12.1 B5: 离散粒子 instanced rendering 1500 粒子 (per spec.spec L209: 1000-2000).
+                // 沿 walked segments 采样位置, golden angle scatter, walked_color by speed.
+                // particle_density (DrawTrack uniform) reduced_motion=0 时 procedural 粒子消失,
+                // 离散粒子可见性由 walked_ratio 推进决定.
+                self.draw_particle.begin_many_instances(cx);
+                let total_particles: usize = 1500;
+                let golden_angle: f32 = 2.39996322972865332;
+                let scatter_radius: f32 = 6.0;
+                for i in 0..total_particles {
+                    let phase_norm = i as f32 / total_particles as f32;
+                    if phase_norm > self.walked_ratio {
+                        continue;
+                    }
+                    let seg_idx = ((phase_norm * segs.len() as f32) as usize)
+                        .min(segs.len().saturating_sub(1));
+                    let seg = &segs[seg_idx];
+                    let scatter_angle = (i as f32) * golden_angle;
+                    let scatter_x = scatter_angle.cos() * scatter_radius;
+                    let scatter_y = scatter_angle.sin() * scatter_radius;
+                    let mid_x = (seg.start.x + seg.end.x) * 0.5 + scatter_x;
+                    let mid_y = (seg.start.y + seg.end.y) * 0.5 + scatter_y;
+                    let speed = (seg.speed_a + seg.speed_b) * 0.5;
+                    let speed_norm = (speed / 12.0).clamp(0.0, 1.0);
+                    let color = if speed_norm < 0.5 {
+                        let t = speed_norm * 2.0;
+                        vec3(
+                            0.91 * (1.0 - t) + 1.0 * t,
+                            0.91 * (1.0 - t) + 0.541 * t,
+                            0.94 * (1.0 - t) + 0.239 * t,
+                        )
+                    } else {
+                        let t = (speed_norm - 0.5) * 2.0;
+                        vec3(
+                            1.0 * (1.0 - t),
+                            0.541 * (1.0 - t) + 0.898 * t,
+                            0.239 * (1.0 - t) + 1.0 * t,
+                        )
+                    };
+                    let psize: f64 = 3.0;
+                    self.draw_particle.particle_color = color;
+                    self.draw_particle.particle_alpha = 0.7;
+                    self.draw_particle.draw_abs(
+                        cx,
+                        Rect {
+                            pos: dvec2(mid_x as f64 - psize * 0.5, mid_y as f64 - psize * 0.5),
+                            size: dvec2(psize, psize),
+                        },
+                    );
+                }
+                self.draw_particle.end_many_instances(cx);
 
                 let marker_size: f64 = 14.0;
                 let marker_rect = |p: Vec2| Rect {
