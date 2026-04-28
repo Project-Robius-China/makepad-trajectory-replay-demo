@@ -7,7 +7,9 @@ tags: [visual, design, mockup, makepad, android, trajectory-replay]
 
 锁定 mockup (design/refs/storyboard-1.png 与 design/refs/storyboard-2.png) 已经达到的视觉效果作为视觉设计真值, 让后续 ChatGPT Image 2 出图、Figma 标注、cc 代码实现稳定收敛到同一视觉锚点, 避免视觉漂移。
 
-mockup 已把整体氛围 (深色底 + 暖橙速度色 + guard 红边 pulse + 收尾 stats 网格) 立起来, 但残留 4 处与 prd.md §6 契约不一致 (顶栏出现返回箭头 / profile 标签英文 "Cycling" / 主回放仅暖橙单色 / 主画布右上角第三个按钮字符显示 "3D" 应为 "2D")。本 spec 用 BDD 场景把这些不一致强制纠偏, 同时把 mockup 中正确的部分锁成可被机械检查的契约。
+mockup 已把整体氛围 (深色底 + 暖橙速度色 + guard 红边 pulse + 收尾 stats 网格) 立起来, 但 `design/refs/storyboard-{1,2}.png` 残留 4 处与 prd.md §6 契约不一致 (顶栏出现返回箭头 / profile 标签英文 "Cycling" / 主回放仅暖橙单色 / 主画布右上角第三个按钮字符显示 "3D" 应为 "2D")。本 spec 用 BDD 场景把这些不一致强制纠偏, 同时把 mockup 中正确的部分锁成可被机械检查的契约。
+
+**P11.3 进度**: 上述 4 处残留**已通过 P10/P11 代码实施修正**, 单屏 demo ground truth 见 `design/refs/v2/s2-main-replay.png` (S2 主回放) 与 `design/refs/v2/s4-stats.png` (S4 收尾)。原 storyboard-{1,2}.png 4-grid/3-grid 拼图重画归 P12 设计师 follow-up (cc 无 image montage 工具)。
 
 本 spec 是 prd.md §6 视觉契约的执行层, 由设计、产品、cc 三方共同消费。
 
