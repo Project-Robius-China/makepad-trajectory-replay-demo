@@ -339,9 +339,10 @@ walked_segment:  #F5F5FA
 unwalked_segment:#3B3B46
 accent_success:  #10B981
 accent_warning:  #FF3B6E
+accent_in_progress: #F59E0B
 ```
 
-背景以深色为底，但不能把所有 UI 都做成同一蓝紫色系。速度、成功、警示、已走段、未走段要有清晰语义。
+背景以深色为底，但不能把所有 UI 都做成同一蓝紫色系。速度、成功、警示、已走段、未走段、进行中要有清晰语义。`accent_in_progress` 用于 "同步中..." 等中间态徽章，区别于 `accent_warning` 的硬性警示。
 
 ### 6.2 字体与布局
 
@@ -369,6 +370,7 @@ accent_warning:  #FF3B6E
 | 10 | guard 卡片 slide-down | contract reject | 拦截原因进入并遮住 AI 文本 |
 | 11 | 已走段分色 | 回放全程 | `walked_segment_ratio` 前后分色 |
 | 12 | scrubber echo | scrubber 拖动 | thumb 后方出现短暂 echo trail |
+| 13 | 当前位置 halo HR pulse | 回放全程 | 由 `hr_phase` uniform 驱动, 周期 = 60.0 / current_hr_bpm 秒 |
 
 新增动效说明：
 
@@ -406,8 +408,9 @@ accent_warning:  #FF3B6E
 - `guard_pulse_phase`
 - `walked_segment_ratio`
 - `scrubber_echo_phase`
+- `hr_phase`
 
-前 5 个是原始 C+ 核心；后 2 个对应本轮新增轨迹动效。
+前 5 个是原始 C+ 核心；`walked_segment_ratio` 与 `scrubber_echo_phase` 对应轨迹细化动效；`hr_phase` 驱动当前位置 halo 的 HR pulse 呼吸 (周期 = 60.0 / current_hr_bpm 秒)。
 
 ### 7.2 渲染约束
 
@@ -491,7 +494,7 @@ AI 建议已被 spec 阻止
 
 - 原 AI 建议在 reject 后不出现在任何可见 UI 区域。
 - guard pulse 持续 1.5s。
-- 拦截卡片包含 5 分钟 HR mini-chart。
+- 拦截卡片在 t=300ms 时与 pulse 并发 slide-down 进入主画布中央, pulse 结束 (t=1500ms) 后保持可见, 由用户点击 "知道了" 或 scrubber 离开高强度段并经过 1.5s 触发关闭。
 - 离开高强度窗口并经过 1.5s 后，guard active 复位。
 
 ---

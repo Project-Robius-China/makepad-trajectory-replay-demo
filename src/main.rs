@@ -118,8 +118,16 @@ script_mod! {
             let base = mix(unwalked_color, walked_color, walked)
             let glow_d = self.capsule_sdf(p, self.start_xy, self.end_xy, glow_w)
             let glow = exp(-max(glow_d, 0.0) * 0.4) * 0.55 * walked
-            let final_rgb = base + walked_color * glow
-            let final_a = alpha + glow * 0.3 * (1. - alpha)
+            // 粒子 dot noise (xor 技法, B5): 沿已走段 capsule zone 内随时间流动.
+            // particle_density=0 时自动消失 (B2 reduced-motion 联动).
+            let p_zone_d = self.capsule_sdf(p, self.start_xy, self.end_xy, 16.0)
+            let in_zone = step(p_zone_d, 0.0) * walked
+            let drift = vec2(self.draw_pass.time * 2.0, 0.0)
+            let n = fract(sin(dot(floor(p * 0.4 + drift), vec2(12.9898, 78.233))) * 43758.5)
+            let particle_visible = step(1.0 - self.particle_density * 0.04, n) * in_zone
+            let particle_color = walked_color * 1.4
+            let final_rgb = base + walked_color * glow + particle_color * particle_visible
+            let final_a = alpha + glow * 0.3 * (1. - alpha) + particle_visible * 0.7 * (1. - alpha) * (1. - glow * 0.3)
             let dim = 1. - self.overlay_dim * 0.7
             return Pal.premul(vec4(final_rgb * dim, final_a * dim))
         }
@@ -1317,6 +1325,8 @@ pub struct App {
     #[rust] guard_card_visible: bool,
     #[rust] last_scrubber_drag_secs: f64,
 
+    #[rust] reduced_motion: bool,
+
     #[rust] next_frame: NextFrame,
 }
 
@@ -1540,7 +1550,9 @@ impl App {
         }
 
         let echo_age = (now - self.last_scrubber_drag_secs).max(0.0);
-        let scrubber_echo_v = if echo_age < SCRUBBER_ECHO_FADE_SECS {
+        let scrubber_echo_v = if self.reduced_motion {
+            0.0
+        } else if echo_age < SCRUBBER_ECHO_FADE_SECS {
             let t = 1.0 - (echo_age / SCRUBBER_ECHO_FADE_SECS).max(0.0);
             ease_out_cubic(t.max(0.0)) as f32
         } else {
@@ -1551,13 +1563,23 @@ impl App {
         let guard_age = (now - self.guard_active_started_at_secs).max(0.0);
         let guard_pulse_v = if self.state.contract_guard_active {
             let initial = (1.0 - (guard_age / GUARD_PULSE_DURATION_SECS)).max(0.0) as f32;
-            let steady = (0.55 + 0.25 * (now * 8.0).sin()) as f32;
-            initial.max(steady)
+            if self.reduced_motion {
+                // reduced-motion: 不振荡, 只 fade out 一次, 红边静态显示 1.5s 后消失
+                initial
+            } else {
+                let steady = (0.55 + 0.25 * (now * 8.0).sin()) as f32;
+                initial.max(steady)
+            }
         } else {
             0.0
         };
 
-        let (hr_phase_now, _) = self.hr_phase(now);
+        let (hr_phase_now, _) = if self.reduced_motion {
+            // reduced-motion: phase 固定 0.5, halo 直径锁定中间值不呼吸
+            (0.5_f32, 0.0_f32)
+        } else {
+            self.hr_phase(now)
+        };
 
         let track_arc = self.track.clone();
         let canvas_ref = self.ui.widget(cx, ids!(track_canvas));
@@ -1852,6 +1874,25 @@ impl MatchEvent for App {
         self.pending_fetch = None;
         self.guard_card_visible = false;
         self.last_scrubber_drag_secs = -10.0;
+
+        // reduced-motion 一次性检测 (G3 / ui-ux-pro-max Severity High a11y).
+        // PC 测试用 env var; Android 真机需走 JNI 读 Settings.Global.ANIMATOR_DURATION_SCALE,
+        // 待 robius 桥接补全后接入, 当前 Android 默认为 false.
+        self.reduced_motion = std::env::var("ANIMATOR_DURATION_SCALE")
+            .ok()
+            .and_then(|s| s.parse::<f32>().ok())
+            .map(|scale| scale == 0.0)
+            .unwrap_or(false);
+        if self.reduced_motion {
+            log!("reduced-motion: particle / scrubber-echo / guard-pulse / hr-pulse 全部降级");
+            if let Some(mut canvas) = self
+                .ui
+                .widget(cx, ids!(track_canvas))
+                .borrow_mut::<TrackCanvas>()
+            {
+                canvas.draw_track.particle_density = 0.0;
+            }
+        }
 
         self.refresh_top_bar(cx);
         self.refresh_sync_overlay(cx);

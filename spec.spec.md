@@ -1,21 +1,20 @@
 spec: task
 name: "Makepad Android 轨迹回放 demo PRD/spec 合约"
 tags: [demo, makepad, android, trajectory-replay, project-robius-china]
----
+-----------------------------------------------------------------------
 
 ## 意图
 
-为 Project-Robius-China community review 准备一个 Makepad Android 轨迹回放 demo 的实现合约。首版运行体验为 cycling 默认回放，但数据与回放层必须按通用 trajectory replay engine 设计，能够通过 GitHub API 从 `Project-Robius-China/trajectory-replay-data` 读取 manifest 和默认数据，并为运动、旅行、飞行轨迹保留统一归一化模型。本文档只约束后续实现，不要求本轮写代码。
+为 Project-Robius-China community review 准备一个 Makepad Android 轨迹回放 demo 的实现合约。首版运行体验为 cycling 默认回放，但数据与回放层必须按通用 trajectory replay engine 设计，能够通过 GitHub API 从 `Project-Robius-China/trajectory-replay-data` 读取 manifest 和默认数据，并为运动、旅行、飞行轨迹保留统一归一化模型。
 
 ## 决策
 
 ### Scope
 
-- 项目定位: 开源工程 demo，保持工程描述风格，不做商业 landing page。
-- Engine scope: 通用 trajectory replay engine，支持 `cycling`、`running`、`hiking`、`walking`、`transit`、`travel`、`flight` 七类 profile 的 manifest 与归一化。
+- 项目定位: 开源工程 demo，展示makepad能力，保持工程描述风格。
+- Engine scope: 通用 trajectory replay engine，支持 `cycling`。
 - Renderer scope: 首版渲染层只实现 `cycling` 默认 profile，不提供运动类型切换 UI。
 - 提交目标: `Project-Robius-China` 组织，PR 面向 community review。
-- 本轮交付: 只改 `prd.md` 与 `spec.spec.md`，不写 Cargo 项目、不添加源码、不下载数据文件。
 
 ### 数据层
 
@@ -37,7 +36,8 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 - guard 警示色: `#FF3B6E`，只用于 contract guard。
 - 已走段分色: `walked_segment_ratio` 前段用已走段色，后段用未走段色或降低 opacity。
 - scrubber echo: 用户拖动 scrubber 时，thumb 后方显示 300-500ms 的 echo trail，不改变真实 playback progress。
-- 必须暴露 shader uniforms: `track_progress`、`polyline_color_mix`、`particle_density`、`elevation_z`、`guard_pulse_phase`、`walked_segment_ratio`、`scrubber_echo_phase`
+- 必须暴露 shader uniforms: `track_progress`、`polyline_color_mix`、`particle_density`、`elevation_z`、`guard_pulse_phase`、`walked_segment_ratio`、`scrubber_echo_phase`、`hr_phase`
+- `hr_phase`: 当前位置 halo 的 HR-driven pulse 相位, 取值 0..1, 周期等于 60.0 / max(current_hr_bpm, 1) 秒; 当 current_hr_bpm 为 None 时退化为固定 1.0 Hz
 - 粒子流: 使用 instanced quads，不使用 per-particle widget。
 - 海拔: 2.5D vertex offset，不做真实 3D terrain mesh。
 
@@ -165,7 +165,8 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   并且 当 network_state 变为 Success 时 UI 显示包含 "已同步" 的文字
   并且 当 network_state 变为 Fallback 时 UI 显示包含 "本地缓存" 的文字
   并且 三种文字均不通过 toast 一闪而过的方式呈现
-  并且 主屏右上角持久徽章持续显示当前同步状态文字直到 app 退出
+  并且 顶栏右侧持久徽章持续显示当前同步状态文字直到 app 退出
+  并且 该徽章与主画布右上角控件组在屏幕水平区域有视觉邻接, 但归属顶栏图层 (见 visual.spec Z-order 层叠)
 
 场景: HTTP client 是 ureq 且未引入 tokio 或 reqwest 或 aws-lc-rs
   测试: test_http_client_is_ureq_only
@@ -247,9 +248,14 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   那么 AI mock 输出文本为 "建议加速 30% 通过此段，缩短爬坡时间。"
   并且 spec 引擎执行 contract c1.2 检查并返回 reject
   并且 PlaybackState.contract_guard_active 在至少 1.5 秒内为 true
-  并且 UI 显示边框颜色 #FF3B6E 的 pulse 动效持续 1500 毫秒
+  并且 t=0ms 时 guard_pulse_phase 从 0 启动, 屏幕边缘 #FF3B6E 红色 outer glow 进入
+  并且 t=300ms 时拦截卡片从 viewport 上方 slide-down 进入主画布中央, 与 pulse 并发
+  并且 t=1500ms 时 guard_pulse_phase 衰减到 0, 红边 pulse 结束
+  并且 拦截卡片在 pulse 结束后继续保持可见, 不自动关闭
   并且 拦截卡片显示的文本包含字符串 "违反契约 c1.2"
   并且 拦截卡片显示的文本包含字符串 "高强度持续约束"
+  并且 拦截卡片底部 CTA 按钮文案为 "知道了"
+  并且 卡片关闭由用户点击 "知道了" 或 scrubber 离开高强度段并经过 1.5s 触发
   并且 AI mock 的输出文本 "建议加速 30%" 不出现在 UI 任何可见区域
 
 场景: contract c1.2 在低强度段不误触发
@@ -322,7 +328,24 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   并且 存在 uniform 名为 guard_pulse_phase
   并且 存在 uniform 名为 walked_segment_ratio
   并且 存在 uniform 名为 scrubber_echo_phase
+  并且 存在 uniform 名为 hr_phase
   并且 主屏 widget 的背景颜色字面量包含字符串 #0A0A0F
+
+场景: 系统 reduced-motion 设置触发动效降级
+  测试: test_reduced_motion_degradation
+  层级: integration
+  替身: 注入 Settings.Global.ANIMATOR_DURATION_SCALE = 0.0
+  假设 Android 设备的 ANIMATOR_DURATION_SCALE 等于 0.0
+  当 app 启动并进入 S2 主回放状态
+  那么 shader uniform particle_density 强制为 0.0 (粒子流停用)
+  并且 shader uniform scrubber_echo_phase 在用户拖动时不产生衰减动画
+  并且 shader uniform hr_phase 停在固定值 0.5 (halo 直径固定 20dp 不呼吸)
+  并且 shader uniform guard_pulse_phase 在 contract reject 时不振荡 (红边静态显示 1500ms 后消失)
+  并且 path-draw 动效跳过, 轨迹直接以 track_progress=1.0 全显示进入 S2
+  并且 S4 stats 4 项 fade-up 跳过, 4 项立即可见
+  并且 scrubber thumb FingerDown 直径切换从 200ms 过渡降级为瞬间切换
+  并且 颜色 / 状态文字 / 状态机行为 / contract guard 拦截逻辑完全不变
+  并且 用户仍可暂停 / 拖 scrubber / 切倍速 / 双击触发 AI 询问
 
 场景: trajectory-replay-data manifest 指定 cycling 默认数据
   测试: test_manifest_selects_cycling_default_dataset
@@ -427,14 +450,16 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   并且 不存在 3D 渲染管线被触发
   并且 按钮视觉态不变化
 
-场景: 当前位置 halo 由 HR pulse 驱动
+场景: 当前位置 halo 由 hr_phase uniform 驱动
   测试: test_position_halo_hr_driven
   层级: shader
   假设 app 处于 S2 主屏回放状态
   并且 当前 trkpt heart_rate_bpm 等于 168
   当 渲染当前位置 halo
-  那么 halo 直径在 16dp 到 24dp 之间随时间正弦振荡
-  并且 振荡频率与当前 heart_rate_bpm 比值成正比
+  那么 shader uniform hr_phase 取值在 0.0 到 1.0 之间循环
+  并且 hr_phase 的周期等于 60.0 除以 168 秒, 误差在 0.05 内
+  并且 halo 直径由 hr_phase 驱动在 16dp 到 24dp 之间正弦振荡
+  并且 当 current_hr_bpm 为 None 时 hr_phase 周期退化为 1.0 秒
   并且 halo 颜色字面量等于 #00E5FF
   并且 halo 直径不随 polyline_color_mix 变化
 
@@ -490,6 +515,20 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   当 用户再次点击暂停按钮
   那么 PlaybackState.is_paused 等于 false
   并且 暂停按钮显示双竖线 ⏸ 字形
+
+场景: S4 阶段暂停按钮显示重播圆环且点击触发重新播放
+  测试: test_replay_button_resets_progress
+  层级: widget
+  假设 PlaybackState.playback_progress 等于 1.0
+  并且 app 处于 S4 stats 收尾屏幕
+  当 检查暂停按钮字形
+  那么 暂停按钮显示圆环箭头 ↻ 字形 (重播 glyph)
+  并且 该字形与 ⏸ / ▶ 双态字形互斥, 仅在 playback_progress >= 1.0 时显示
+  当 用户点击重播按钮
+  那么 PlaybackState.playback_progress 重置为 0.0
+  并且 PlaybackState.is_paused 等于 false
+  并且 PlaybackState.contract_guard_active 重置为 false
+  并且 视图从 S4 切回 S2 主回放屏幕
 
 场景: 水域层不消费 shader uniform
   测试: test_water_layer_static
