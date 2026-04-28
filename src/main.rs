@@ -1916,13 +1916,14 @@ impl MatchEvent for App {
         self.last_scrubber_drag_secs = -10.0;
 
         // reduced-motion 一次性检测 (G3 / ui-ux-pro-max Severity High a11y).
-        // PC 测试用 env var; Android 真机需走 JNI 读 Settings.Global.ANIMATOR_DURATION_SCALE,
-        // 待 robius 桥接补全后接入, 当前 Android 默认为 false.
-        self.reduced_motion = std::env::var("ANIMATOR_DURATION_SCALE")
+        // 双路径检测: (a) PC env var ANIMATOR_DURATION_SCALE 用于开发测试, (b) Android JNI 读
+        // Settings.Global.ANIMATOR_DURATION_SCALE 用于真机 (P11.2). 任一为 0 即降级.
+        let env_var_reduced = std::env::var("ANIMATOR_DURATION_SCALE")
             .ok()
             .and_then(|s| s.parse::<f32>().ok())
             .map(|scale| scale == 0.0)
             .unwrap_or(false);
+        self.reduced_motion = env_var_reduced || detect_android_reduced_motion();
         if self.reduced_motion {
             log!("reduced-motion: particle / scrubber-echo / guard-pulse / hr-pulse 全部降级");
             if let Some(mut canvas) = self
@@ -1946,6 +1947,60 @@ impl MatchEvent for App {
             self.ui.view(cx, ids!(guard_card)).set_visible(cx, false);
         }
     }
+}
+
+// P11.2: Android JNI 读 Settings.Global.ANIMATOR_DURATION_SCALE.
+// 真机走 robius-android-env 提供的 with_activity closure, 拿 JNIEnv + Activity.
+// PC 上 cfg(not(android)) 直接返回 false, robius-android-env / jni crate 不参与 PC build.
+#[cfg(target_os = "android")]
+fn detect_android_reduced_motion() -> bool {
+    use robius_android_env::with_activity;
+    use jni::objects::{JObject, JValue};
+
+    with_activity(|env, activity| -> bool {
+        // resolver = activity.getContentResolver()
+        let resolver = match env
+            .call_method(
+                activity,
+                "getContentResolver",
+                "()Landroid/content/ContentResolver;",
+                &[],
+            )
+            .and_then(|v| v.l())
+        {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+        // key = "animator_duration_scale"
+        let key = match env.new_string("animator_duration_scale") {
+            Ok(k) => k,
+            Err(_) => return false,
+        };
+        // scale = Settings.Global.getFloat(resolver, key, 1.0)
+        let scale = match env
+            .call_static_method(
+                "android/provider/Settings$Global",
+                "getFloat",
+                "(Landroid/content/ContentResolver;Ljava/lang/String;F)F",
+                &[
+                    JValue::Object(&resolver),
+                    JValue::Object(&JObject::from(key)),
+                    JValue::Float(1.0),
+                ],
+            )
+            .and_then(|v| v.f())
+        {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        scale == 0.0
+    })
+    .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "android"))]
+fn detect_android_reduced_motion() -> bool {
+    false
 }
 
 impl AppMain for App {

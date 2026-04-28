@@ -10,6 +10,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "2", default-features = false, features = ["tls", "rustls"] }
 
+# Android JNI 桥接 (P11.2): 仅在 Android target 时链接, PC build 跳过.
+# 用于读 Settings.Global.ANIMATOR_DURATION_SCALE 替换 PC env var 占位.
+[target.'cfg(target_os = "android")'.dependencies]
+robius-android-env = { version = "0.2", features = ["makepad"] }
+jni = "0.21"
+
 [profile.release]
 opt-level = 3
 lto = "thin"
