@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn parses_real_bundled_gpx() {
-        let xml = include_str!("../assets/cycling-track.gpx");
+        let xml = include_str!("../resources/cycling-track.gpx");
         let track = parse_gpx(xml).expect("real GPX must parse");
         assert!(
             track.points.len() > 1000,

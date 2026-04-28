@@ -16,7 +16,7 @@ use crate::state::{
     TrajectoryProfile, UserProfile,
 };
 
-const BUNDLED_GPX: &str = include_str!("../assets/cycling-track.gpx");
+const BUNDLED_GPX: &str = include_str!("../resources/cycling-track.gpx");
 
 const PHASE_SYNCING: i32 = 0;
 const PHASE_PATH_DRAW: i32 = 1;
@@ -567,15 +567,15 @@ script_mod! {
         width: 48
         height: 48
         draw_play_icon +: {
-            svg: crate_resource("self:assets/black24gl-playCircle.svg")
+            svg: crate_resource("self:resources/black24gl-playCircle.svg")
             color: #xF5F5FA
         }
         draw_pause_icon +: {
-            svg: crate_resource("self:assets/20gl-pauseCircle.svg")
+            svg: crate_resource("self:resources/20gl-pauseCircle.svg")
             color: #xF5F5FA
         }
         draw_replay_icon +: {
-            svg: crate_resource("self:assets/shuaxin.svg")
+            svg: crate_resource("self:resources/shuaxin.svg")
             color: #xF5F5FA
         }
     }
@@ -588,6 +588,12 @@ script_mod! {
 
                 body +: {
                     width: Fill height: Fill flow: Down
+                    padding: Inset{
+                        top: (mod.widgets.SAFE_INSET_PAD_TOP),
+                        bottom: (mod.widgets.SAFE_INSET_PAD_BOTTOM),
+                        left: (mod.widgets.SAFE_INSET_PAD_LEFT),
+                        right: (mod.widgets.SAFE_INSET_PAD_RIGHT),
+                    }
 
                     top_bar := View{
                         width: Fill height: Fit
@@ -894,7 +900,7 @@ script_mod! {
                                 stats_checkmark := Svg{
                                     width: 30 height: 30
                                     draw_svg +: {
-                                        svg: crate_resource("self:assets/已完成2.svg")
+                                        svg: crate_resource("self:resources/已完成2.svg")
                                     }
                                 }
 
@@ -2119,7 +2125,7 @@ impl Widget for PlaybackButton {
         cx.begin_turtle(walk, self.layout);
         let rect = cx.turtle().rect();
         self.draw_button.draw_abs(cx, rect);
-        let icon_size = rect.size.x.min(rect.size.y) * 0.58;
+        let icon_size = rect.size.x.min(rect.size.y) * 0.48;
         let icon_rect = Rect {
             pos: rect.pos
                 + dvec2(
@@ -2128,8 +2134,12 @@ impl Widget for PlaybackButton {
                 ),
             size: dvec2(icon_size, icon_size),
         };
+        let pause_icon_rect = Rect {
+            pos: icon_rect.pos + dvec2(1.0, 0.0),
+            size: icon_rect.size,
+        };
         match self.icon_mode {
-            PLAYBACK_ICON_PAUSE => self.draw_pause_icon.draw_abs(cx, icon_rect),
+            PLAYBACK_ICON_PAUSE => self.draw_pause_icon.draw_abs(cx, pause_icon_rect),
             PLAYBACK_ICON_REPLAY => self.draw_replay_icon.draw_abs(cx, icon_rect),
             _ => self.draw_play_icon.draw_abs(cx, icon_rect),
         }
@@ -2417,7 +2427,7 @@ impl App {
         let sub = match self.state.network_state {
             NetworkState::Idle | NetworkState::Fetching => "正在同步轨迹数据",
             NetworkState::Success => "数据来自 trajectory-replay-data 仓库",
-            NetworkState::Fallback => "已退回 assets/cycling-track.gpx",
+            NetworkState::Fallback => "已退回 resources/cycling-track.gpx",
         };
         self.ui
             .label(cx, ids!(sync_overlay_label))
@@ -2880,8 +2890,8 @@ impl App {
 
     fn refresh_speed_buttons(&mut self, cx: &mut Cx) {
         let active = self.state.playback_speed.round() as i32;
-        let active_bg = [0.157, 0.780, 0.910, 1.0];
-        let inactive_bg = [0.078, 0.078, 0.110, 1.0];
+        let active_bg = vec4(0.157, 0.780, 0.910, 1.0);
+        let inactive_bg = vec4(0.078, 0.078, 0.110, 1.0);
         let active_text = vec4(1.0, 1.0, 1.0, 1.0);
         let inactive_text = vec4(0.831, 0.835, 0.867, 1.0);
         for (visual_path, label_path, val) in [
@@ -2901,13 +2911,21 @@ impl App {
                 16,
             ),
         ] {
-            let view = self.ui.view(cx, visual_path);
             let (bg, text_color) = if val == active {
-                (&active_bg, active_text)
+                (active_bg, active_text)
             } else {
-                (&inactive_bg, inactive_text)
+                (inactive_bg, inactive_text)
             };
-            view.set_uniform(cx, live_id!(color), bg);
+            let view = self.ui.view(cx, visual_path);
+            if let Some(mut visual) = view.borrow_mut() {
+                let bg_arr = [bg.x, bg.y, bg.z, bg.w];
+                visual
+                    .draw_bg
+                    .set_dyn_instance(cx, live_id!(color), &bg_arr);
+                visual
+                    .draw_bg
+                    .set_instance_on_area(cx, live_id!(color), &bg_arr);
+            }
             view.redraw(cx);
             let label_text = match val {
                 1 => "1x",
@@ -3183,7 +3201,6 @@ impl AppMain for App {
                 self.next_frame = cx.new_next_frame();
             }
         }
-
         let stats_cancel_area = self.ui.view(cx, ids!(stats_cancel_button)).area();
         if let Hit::FingerUp(fe) = event.hits(cx, stats_cancel_area) {
             if fe.is_over && fe.was_tap() {
@@ -3191,7 +3208,7 @@ impl AppMain for App {
             }
         }
 
-        let pause_area = self.ui.view(cx, ids!(pause_button)).area();
+        let pause_area = self.ui.widget(cx, ids!(pause_button)).area();
         if let Hit::FingerUp(fe) = event.hits(cx, pause_area) {
             if fe.is_over && fe.was_tap() && demo_stage() != Some(DemoStage::S0) {
                 if self.phase == PHASE_STATS
@@ -3225,11 +3242,11 @@ impl AppMain for App {
         }
 
         for (path, speed) in [
-            (ids!(speed_1x_button) as &[LiveId], 1.0_f32),
-            (ids!(speed_4x_button) as &[LiveId], 4.0),
-            (ids!(speed_16x_button) as &[LiveId], 16.0),
+            (ids!(speed_1x_visual) as &[LiveId], 1.0_f32),
+            (ids!(speed_4x_visual) as &[LiveId], 4.0),
+            (ids!(speed_16x_visual) as &[LiveId], 16.0),
         ] {
-            let area = self.ui.view(cx, path).area();
+            let area = self.ui.widget(cx, path).area();
             if let Hit::FingerUp(fe) = event.hits(cx, area) {
                 if fe.is_over && fe.was_tap() && demo_stage() != Some(DemoStage::S0) {
                     self.state.playback_speed = speed;

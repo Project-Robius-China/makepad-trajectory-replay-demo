@@ -211,7 +211,7 @@ scrubber 默认以 4x 速度推进。HUD 每帧从当前点更新。画布显示
 
 bundled fallback：
 
-`assets/cycling-track.gpx`
+`resources/cycling-track.gpx`
 
 manifest 示例：
 

@@ -20,7 +20,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 
 - 数据仓库: `https://github.com/Project-Robius-China/trajectory-replay-data`
 - 默认数据集: `cycling/bikeride.gpx`
-- bundled fallback: `assets/cycling-track.gpx`
+- bundled fallback: `resources/cycling-track.gpx`
 - 联网范围: 只允许访问 GitHub REST Contents API、GitHub Raw download_url 和 trajectory-replay-data 仓库内容；禁止访问 Strava、Garmin、Komoot、Mapbox、OSM live tiles、实时航班 API、LLM API、analytics、telemetry。
 - 数据获取: manifest 通过 `GET /repos/Project-Robius-China/trajectory-replay-data/contents/manifest.json?ref=main` 获取；默认数据通过 Contents API 的 `content`、`download_url` 或 `Accept: application/vnd.github.raw+json` 获取。
 - GPX 解析: `quick-xml = "0.31"` + `serde` derive；禁止 `georust/gpx` 与 `serde-xml-rs`。
@@ -68,7 +68,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 - 速度图例最大刻度: 启动期计算 `max_speed_mps = ceil(max(track.points.iter().map(|p| p.speed_mps)))`，启动后不再变。
 - compass 按钮: 圆形 32dp，点击后视角中心更新到当前 playback position 屏幕坐标，不修改 PlaybackState。
 - 2D 锁定按钮: 圆形 32dp，装饰性，点击不触发任何 state 变更，不存在 3D 模式可切换。
-- 地名标签层 (geo labels): 数据来源优先 `manifest.geo_labels[]`，缺失则从 bundled `assets/geo-labels.json` 读取，4-10 条。
+- 地名标签层 (geo labels): 数据来源优先 `manifest.geo_labels[]`，缺失则从 bundled `resources/geo-labels.json` 读取，4-10 条。
 - 地名标签字段: `{ name: String, lat: f64, lon: f64 }`，启动期一次性投影到屏幕坐标。
 - 起点 marker: 屏幕坐标对应 `track.points[0]`，颜色 `#10B981` 圆点 8dp + "起点" 文字。
 - 终点 marker: 屏幕坐标对应 `track.points.last()`，颜色 `#7A7B8C` 圆点 8dp + "终点" 文字。
@@ -88,8 +88,8 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 
 - prd.md
 - spec.spec.md
-- assets/cycling-track.gpx
-- assets/static-tile.png
+- resources/cycling-track.gpx
+- resources/static-tile.png
 - Cargo.toml
 - Cargo.lock
 - README.md
@@ -129,7 +129,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   层级: integration
   替身: 真实 Android 设备 + 真实网络
   假设 Android 设备网络畅通且能访问 api.github.com 与 raw.githubusercontent.com 上的 trajectory-replay-data 默认数据
-  并且 包内 bundled assets/cycling-track.gpx 文件存在作为 fallback
+  并且 包内 bundled resources/cycling-track.gpx 文件存在作为 fallback
   当 用户启动 app 并放任 playback_progress 自动从 0 走到 1
   那么 app 在启动后 3 秒内通过 GitHub API 成功 fetch manifest 与默认 cycling 数据并完成 parse
   并且 PlaybackState.data_source 等于 Network
@@ -144,7 +144,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   层级: integration
   替身: 真实 Android 设备 + 飞行模式或 hosts 屏蔽 raw.githubusercontent.com
   假设 Android 设备无法访问 raw.githubusercontent.com
-  并且 包内 bundled assets/cycling-track.gpx 文件存在
+  并且 包内 bundled resources/cycling-track.gpx 文件存在
   当 用户启动 app 并放任 playback_progress 自动从 0 走到 1
   那么 app 在 3 秒 timeout 后切换到 local fallback 并完成 parse
   并且 PlaybackState.data_source 等于 LocalFallback
@@ -285,7 +285,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 
 场景: GPX 缺少 cad 字段时正常解析且 HUD 隐藏踏频
   测试: test_gpx_parse_missing_cad
-  假设 文件 assets/cycling-track.gpx 中所有 trkpt 不含 cad 字段
+  假设 文件 resources/cycling-track.gpx 中所有 trkpt 不含 cad 字段
   当 app 启动并执行 GPX parse
   那么 parse 成功完成
   并且 TrajectoryPoint.cadence_rpm 等于 None
@@ -294,7 +294,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
 
 场景: GPX 缺少文件级 hr 字段时拒绝 cycling 默认数据
   测试: test_gpx_parse_rejects_missing_hr
-  假设 文件 assets/cycling-track.gpx 中所有 trkpt 不含 hr 字段
+  假设 文件 resources/cycling-track.gpx 中所有 trkpt 不含 hr 字段
   当 app 启动并执行 cycling 默认数据 parse
   那么 parse 返回 Err
   并且 错误信息字符串包含 "cycling 默认数据必须含 hr 字段"
@@ -426,7 +426,7 @@ tags: [demo, makepad, android, trajectory-replay, project-robius-china]
   当 app 启动并完成 manifest parse
   那么 主画布渲染 6 条地名标签
   并且 每条标签屏幕坐标由 lat lon 投影计算得到
-  并且 manifest.geo_labels 缺失时数据层回退读取 assets/geo-labels.json
+  并且 manifest.geo_labels 缺失时数据层回退读取 resources/geo-labels.json
   并且 fallback 读取失败时主画布渲染 0 条地名标签且不 panic
 
 场景: compass 按钮点击重置视角中心
