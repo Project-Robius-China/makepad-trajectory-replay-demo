@@ -428,7 +428,9 @@ script_mod! {
                 let uv = self.uv_offset + self.pos * self.uv_scale
                 return self.tile_texture.sample(uv)
             }
-            return vec4(0.95, 0.95, 0.95, 1.0)
+            // P13.2: tile 加载占位 — 与 dark tile server (Carto Dark Matter) 自然过渡.
+            // 颜色取 bg_secondary #14141C ≈ vec4(0.078, 0.078, 0.110, 1.0).
+            return vec4(0.078, 0.078, 0.110, 1.0)
         }
     }
 
@@ -1508,10 +1510,10 @@ pub struct TrackCanvas {
     draw_end_marker: DrawMarker,
     #[live]
     draw_halo: DrawHalo,
+    // P13.2: GeoMapView 替代 DrawMapGrid (网格底) + DrawWater (河流装饰).
+    // 锁定位置不交互 (per design B), 启动期 set_center / set_zoom 一次.
     #[live]
-    draw_water: DrawWater,
-    #[live]
-    draw_map: DrawMapGrid,
+    draw_map_geo: GeoMapView,
     #[live]
     draw_particle: DrawParticle,
 
@@ -1689,17 +1691,15 @@ impl Widget for TrackCanvas {
         let rect = cx.turtle().rect();
         self.ensure_geom(rect);
 
-        self.draw_map.draw_abs(cx, rect);
-
-        let water_w = (rect.size.x * 0.42).max(40.0);
-        let water_x = rect.pos.x + rect.size.x - water_w - 18.0;
-        self.draw_water.draw_abs(
-            cx,
-            Rect {
-                pos: dvec2(water_x, rect.pos.y + 80.0),
-                size: dvec2(water_w, rect.size.y - 160.0),
-            },
-        );
+        // P13.2: GeoMapView 占整个 rect 作底图层, 替代 DrawMapGrid + DrawWater.
+        // GeoMapView 是 Widget, 用 draw_walk 渲染 (而非 Draw widget 的 draw_abs).
+        let map_walk = Walk {
+            abs_pos: Some(rect.pos),
+            width: Size::Fixed(rect.size.x),
+            height: Size::Fixed(rect.size.y),
+            ..Default::default()
+        };
+        let _ = self.draw_map_geo.draw_walk(cx, &mut Scope::empty(), map_walk);
 
         if let Some(geom) = self.geom.as_ref() {
             if !geom.segs.is_empty() {
@@ -2074,8 +2074,17 @@ impl TrackCanvas {
             _ => true,
         };
         if changed {
-            self.track = track;
+            self.track = track.clone();
             self.geom = None;
+            // P13.2: track 设进来时, 锁定 GeoMapView 到 GPX bbox 中心 + 合适 zoom (per design B).
+            if let Some(ref t) = track {
+                let b = &t.stats.track_bounds;
+                let center_lng = (b.lon_min + b.lon_max) * 0.5;
+                let center_lat = (b.lat_min + b.lat_max) * 0.5;
+                // zoom 简化用固定 13 (适合 city scale 骑行轨迹); 精确 zoom 计算留 P13.3
+                self.draw_map_geo.set_center(cx, center_lng, center_lat);
+                self.draw_map_geo.set_zoom(cx, 13.0);
+            }
             self.area.redraw(cx);
         }
     }

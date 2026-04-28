@@ -51,7 +51,9 @@ impl TileCache {
             pending_requests: HashMap::new(),
             request_counter: 0,
             // Carto Voyager - clean, modern style (free, no API key required)
-            tile_server: "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png".to_string(),
+            // P13.2: 用 Carto Dark Matter 暗色瓦片, 与 mobile_example demo 暗色 huashu 主题一致
+            // (原 voyager 是 light theme 与 #0A0A0F 暗底冲突).
+            tile_server: "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png".to_string(),
         }
     }
 
