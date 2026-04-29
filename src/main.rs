@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use crate::map::{DrawMapMarker, DrawMapTile, GeoMapView};
 use crate::network::{spawn_fetch_worker, FetchResult};
-use crate::parser::parse_gpx;
+use crate::parser::{parse_gpx, trim_track_for_demo};
 use crate::state::{
     effective_max_hr, five_minute_window_avg_hr, DataSource, NetworkState, PlaybackState, Track,
     TrajectoryProfile, UserProfile,
@@ -2465,7 +2465,7 @@ impl App {
             return;
         }
         match parse_gpx(BUNDLED_GPX) {
-            Ok(t) => self.track = Some(Arc::new(t)),
+            Ok(t) => self.track = Some(Arc::new(trim_track_for_demo(t))),
             Err(e) => log!("bundled GPX parse failed: {}", e),
         }
     }
@@ -2594,7 +2594,7 @@ impl App {
     fn apply_fetch_result(&mut self, cx: &mut Cx, result: FetchResult, now_secs: f64) {
         match result {
             FetchResult::Success(track) => {
-                self.track = Some(Arc::new(track));
+                self.track = Some(Arc::new(trim_track_for_demo(track)));
                 self.state.network_state = NetworkState::Success;
                 self.state.data_source = DataSource::Network;
                 self.success_entered_secs = Some(now_secs);

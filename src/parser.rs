@@ -5,6 +5,9 @@ use quick_xml::reader::NsReader;
 
 const TPE_V1: &[u8] = b"http://www.garmin.com/xmlschemas/TrackPointExtension/v1";
 const TPE_V2: &[u8] = b"http://www.garmin.com/xmlschemas/TrackPointExtension/v2";
+const DEMO_TRIM_TARGET_MS: i64 = 360_000;
+const DEMO_TRIM_MIN_MS: i64 = 240_000;
+const DEMO_TRIM_MIN_POINTS: usize = 420;
 
 #[derive(Debug)]
 pub enum GpxError {
@@ -159,6 +162,113 @@ pub fn parse_gpx(xml: &str) -> Result<Track, GpxError> {
         route_name,
         profile: TrajectoryProfile::Cycling,
     })
+}
+
+pub fn trim_track_for_demo(mut track: Track) -> Track {
+    if track.points.len() < DEMO_TRIM_MIN_POINTS {
+        return track;
+    }
+
+    let Some(first) = track.points.first() else {
+        return track;
+    };
+    let Some(last) = track.points.last() else {
+        return track;
+    };
+    if last.timestamp_ms - first.timestamp_ms <= DEMO_TRIM_TARGET_MS {
+        return track;
+    }
+
+    let Some((start, end)) = select_demo_window(&track.points) else {
+        return track;
+    };
+    if end <= start || end >= track.points.len() {
+        return track;
+    }
+
+    let mut points = track.points[start..=end].to_vec();
+    fill_speed_from_distance(&mut points);
+    track.stats = compute_stats(&points);
+    track.points = points;
+    track
+}
+
+fn select_demo_window(points: &[TrajectoryPoint]) -> Option<(usize, usize)> {
+    let mut best: Option<(usize, usize, f64)> = None;
+    let mut end = 0usize;
+
+    for start in 0..points.len().saturating_sub(1) {
+        if end < start {
+            end = start;
+        }
+        while end + 1 < points.len()
+            && points[end].timestamp_ms - points[start].timestamp_ms < DEMO_TRIM_TARGET_MS
+        {
+            end += 1;
+        }
+
+        let duration = points[end].timestamp_ms - points[start].timestamp_ms;
+        if duration < DEMO_TRIM_MIN_MS {
+            continue;
+        }
+
+        let score = demo_window_score(&points[start..=end]);
+        match best {
+            Some((_, _, best_score)) if score <= best_score => {}
+            _ => best = Some((start, end, score)),
+        }
+    }
+
+    best.map(|(start, end, _)| (start, end))
+}
+
+fn demo_window_score(points: &[TrajectoryPoint]) -> f64 {
+    if points.len() < 2 {
+        return 0.0;
+    }
+
+    let mut lat_min = points[0].lat;
+    let mut lat_max = points[0].lat;
+    let mut lon_min = points[0].lon;
+    let mut lon_max = points[0].lon;
+    let mut distance = 0.0_f64;
+    let mut turn = 0.0_f64;
+    let mut prev_heading: Option<f64> = None;
+
+    for p in points {
+        lat_min = lat_min.min(p.lat);
+        lat_max = lat_max.max(p.lat);
+        lon_min = lon_min.min(p.lon);
+        lon_max = lon_max.max(p.lon);
+    }
+
+    for pair in points.windows(2) {
+        let a = &pair[0];
+        let b = &pair[1];
+        let segment = haversine(a.lat, a.lon, b.lat, b.lon);
+        distance += segment;
+        if segment > 0.5 {
+            let heading = ((b.lon - a.lon) * a.lat.to_radians().cos()).atan2(b.lat - a.lat);
+            if let Some(prev) = prev_heading {
+                turn += angle_delta(prev, heading).abs();
+            }
+            prev_heading = Some(heading);
+        }
+    }
+
+    let diagonal = haversine(lat_min, lon_min, lat_max, lon_max);
+    distance + diagonal * 1.5 + turn * 12.0
+}
+
+fn angle_delta(a: f64, b: f64) -> f64 {
+    let mut d = b - a;
+    while d > std::f64::consts::PI {
+        d -= std::f64::consts::TAU;
+    }
+    while d < -std::f64::consts::PI {
+        d += std::f64::consts::TAU;
+    }
+    d
 }
 
 fn fill_speed_from_distance(points: &mut [TrajectoryPoint]) {
@@ -419,6 +529,84 @@ mod tests {
         assert!(track.stats.distance_m_total > 1000.0);
         assert!(track.stats.duration_ms_total > 60_000);
         assert!(track.stats.speed_max_mps > 0.0);
+    }
+
+    #[test]
+    fn trims_long_track_to_motion_rich_demo_window() {
+        let mut points = Vec::new();
+        for i in 0..900 {
+            let dynamic = i >= 420 && i < 760;
+            let lat_jitter = if dynamic {
+                ((i - 420) % 32) as f64 * 0.000018
+            } else {
+                0.0
+            };
+            let lon_step = if dynamic { 0.000035 } else { 0.000006 };
+            points.push(TrajectoryPoint {
+                lat: 35.0 + i as f64 * 0.000002 + lat_jitter,
+                lon: -121.0 + i as f64 * lon_step,
+                ele_m: Some(100.0 + (i % 45) as f32),
+                timestamp_ms: 1_500_000_000_000 + i as i64 * 1000,
+                speed_mps: Some(4.0),
+                heart_rate_bpm: Some(130 + (i % 20) as u16),
+                cadence_rpm: Some(80 + (i % 8) as u16),
+                power_w: None,
+                heading_deg: None,
+                altitude_m: None,
+                transport_mode: None,
+                route_label: None,
+                source_index: i,
+            });
+        }
+        let full_track = Track {
+            points,
+            stats: compute_stats(&[]),
+            route_name: "Demo Route".to_string(),
+            profile: TrajectoryProfile::Cycling,
+        };
+
+        let trimmed = trim_track_for_demo(full_track);
+
+        assert!(trimmed.points.len() >= 240);
+        assert!(trimmed.points.len() <= 420);
+        assert_eq!(trimmed.route_name, "Demo Route");
+        assert_eq!(trimmed.profile, TrajectoryProfile::Cycling);
+        assert!(
+            trimmed.points.first().unwrap().source_index >= 360,
+            "expected demo window to start near dynamic section, got {}",
+            trimmed.points.first().unwrap().source_index
+        );
+        assert!(
+            trimmed.points.last().unwrap().source_index <= 820,
+            "expected demo window to stay near dynamic section, got {}",
+            trimmed.points.last().unwrap().source_index
+        );
+        assert_eq!(
+            trimmed.stats.duration_ms_total,
+            trimmed.points.last().unwrap().timestamp_ms
+                - trimmed.points.first().unwrap().timestamp_ms
+        );
+    }
+
+    #[test]
+    fn leaves_short_tracks_untrimmed() {
+        let xml = r#"<?xml version="1.0"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:ns3="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
+  <trk><name>Short Route</name><trkseg>
+    <trkpt lat="35.0" lon="-121.0"><time>2019-10-22T14:36:00.000Z</time><extensions><ns3:TrackPointExtension><ns3:hr>110</ns3:hr></ns3:TrackPointExtension></extensions></trkpt>
+    <trkpt lat="35.0001" lon="-121.0001"><time>2019-10-22T14:36:01.000Z</time><extensions><ns3:TrackPointExtension><ns3:hr>112</ns3:hr></ns3:TrackPointExtension></extensions></trkpt>
+  </trkseg></trk>
+</gpx>"#;
+        let track = parse_gpx(xml).expect("parse ok");
+
+        let trimmed = trim_track_for_demo(track.clone());
+
+        assert_eq!(trimmed.points.len(), track.points.len());
+        assert_eq!(
+            trimmed.stats.duration_ms_total,
+            track.stats.duration_ms_total
+        );
     }
 
     #[test]
