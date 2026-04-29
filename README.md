@@ -43,27 +43,6 @@ cargo makepad android install-toolchain --full-ndk
 cargo makepad android adb devices -l
 ```
 
-### 编译 Android APK
-
-推荐先编译 `aarch64`，用于大多数真机：
-
-```bash
-cargo makepad android \
-  --abi=aarch64 \
-  --package-name=org.projectrobius.trajectoryreplay \
-  --app-label="Trajectory Replay" \
-  --no-icon \
-  build -p mobile_example --release
-```
-
-构建完成后 APK 位于：
-
-```text
-target/android/makepad-android-apk/mobile_example/apk/mobile_example.apk
-```
-
-`--no-icon` 用于跳过自定义 app icon 检查。如果后续添加了 `resources/icon_32.png`、`resources/icon_64.png`、`resources/icon_128.png` 和 `resources/icon.ico`，可以去掉这个参数。
-
 ### 编译并安装运行
 
 连接 Android 设备后运行：
@@ -156,27 +135,6 @@ Check connected devices:
 ```bash
 cargo makepad android adb devices -l
 ```
-
-### Build Android APK
-
-Build `aarch64` first for most physical Android devices:
-
-```bash
-cargo makepad android \
-  --abi=aarch64 \
-  --package-name=org.projectrobius.trajectoryreplay \
-  --app-label="Trajectory Replay" \
-  --no-icon \
-  build -p mobile_example --release
-```
-
-The APK will be generated at:
-
-```text
-target/android/makepad-android-apk/mobile_example/apk/mobile_example.apk
-```
-
-`--no-icon` suppresses the custom icon check. If you later add `resources/icon_32.png`, `resources/icon_64.png`, `resources/icon_128.png`, and `resources/icon.ico`, you can remove this flag.
 
 ### Build, Install, And Run
 
